@@ -1,4 +1,4 @@
-"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }// pages/api/payment/create-payment-intent.js
+"use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; } function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }// pages/api/payment/create-payment-intent.js
 
 var _stripe = require('stripe'); var _stripe2 = _interopRequireDefault(_stripe);
 var _boom = require('boom'); var _boom2 = _interopRequireDefault(_boom);
@@ -71,18 +71,29 @@ var _courses = require('../../models/courses'); var _courses2 = _interopRequireD
       tokens = 0;
       amount = 0;
     } else if (packageType === "course") {
-      // For a course purchase, ensure courseId is provided and valid.
+      // Ensure courseId is provided and valid
       if (!courseId) {
         return res.status(400).json({ success: false, message: "Missing course ID for course purchase." });
       }
+    
       const course = await _courses2.default.findById(courseId);
       if (!course) {
         return res.status(404).json({ success: false, message: "Course not found." });
       }
-      // Use the provided price.
+    
+      // Apply discounts based on subscription
+      if (user.subscription === "premium") {
+        price = 0;
+      } else if (user.subscription === "basic") {
+        price = course.price * 0.2; // 80% off
+      } else {
+        price = course.price; // full price
+      }
+    
       amount = Math.round(price * 100);
-      tokens = 0; // No tokens accumulation for course purchase
-    } else {
+      tokens = 0; // No tokens for course purchases
+    }
+     else {
       return res.status(400).json({ success: false, message: "Invalid package type." });
     }
 
@@ -150,31 +161,23 @@ var _courses = require('../../models/courses'); var _courses2 = _interopRequireD
  const getAllPaymentsWithStatus = async (req, res, next) => {
   try {
     const { status } = req.query;
-    const query = status ? { status } : {};
+    const filter = status ? { status } : {};
 
-    // Fetch payments and populate user and course
-    const payments = await _payment2.default.find(query)
-      .populate("user") // Populate user details
-      .populate({
-        path: "_id", // Populate courseId
-        select: "title", // Only fetch the course title to avoid unnecessary data
-        model: "Course", // Specify the Course model to use for population
-      });
+    // 1) Find + populate user and course
+    const payments = await _payment2.default.find(filter)
+      .populate("user", "username email")    // just bring in username & email
+      .populate("course", "title")           // <-- populate your course field
+      .lean();                               // get plain objects
 
-    // Map through the payments and add the course title if courseId exists
-    const updatedPayments = payments.map(payment => {
-      // Add course title to each payment if courseId exists
-      if (payment.course) {
-        payment.courseTitle = payment.course.title;
-      } else {
-        payment.courseTitle = "N/A"; // Set to "N/A" if no courseId exists
-      }
-      return payment;
-    });
+    // 2) Map in a courseTitle (or "N/A")
+    const updatedPayments = payments.map((p) => ({
+      ...p,
+      courseTitle: _nullishCoalesce(_optionalChain([p, 'access', _ => _.course, 'optionalAccess', _2 => _2.title]), () => ( "N/A")),
+    }));
 
     return res.status(200).json({ success: true, payments: updatedPayments });
-  } catch (error) {
-    console.error("Error fetching payments:", error);
+  } catch (err) {
+    console.error("Error fetching payments:", err);
     return next(_boom2.default.internal("Error fetching payments."));
   }
 }; exports.getAllPaymentsWithStatus = getAllPaymentsWithStatus;
@@ -222,29 +225,61 @@ var _courses = require('../../models/courses'); var _courses2 = _interopRequireD
     if (!paymentId) {
       return res.status(400).json({ success: false, message: "Missing payment id." });
     }
+
     // Retrieve the Payment record
-    const payment = await _payment2.default.findById(paymentId);
+    const payment = await _payment2.default.findById(paymentId).lean();
     if (!payment) {
       return res.status(404).json({ success: false, message: "Payment not found." });
     }
-    // Use the Stripe PaymentIntent ID stored in the Payment record.
-    const paymentIntentId = payment.paymentIntentId;
+
+    const { user: userId, course, tokens, data: packageType, period, paymentIntentId } = payment;
+
     if (!paymentIntentId) {
-      return res.status(400).json({ success: false, message: "No PaymentIntent id found in payment record." });
+      return res.status(400).json({ success: false, message: "No PaymentIntent ID found." });
     }
-    // Create a refund using the Stripe API.
+
+    // Issue Stripe refund
     const refund = await stripe.refunds.create({
       payment_intent: paymentIntentId,
     });
-    // Optionally update the Payment record status to "refunded".
-    payment.status = "refunded";
-    await payment.save();
+
+    // === ROLLBACK LOGIC STARTS HERE ===
+
+    // Convert tokens back to number safely
+    const tokenAmount = Number(tokens || 0);
+
+    // Undo effects based on package type
+    if (["small", "large", "custom"].includes(packageType)) {
+      // Remove tokens
+      await _user2.default.findByIdAndUpdate(userId, { $inc: { tokens: -tokenAmount } });
+
+    } else if (["trial", "basic", "premium"].includes(packageType)) {
+      // Reset subscription
+      await _user2.default.findByIdAndUpdate(userId, {
+        $set: { subscription: null, period: null, subscribed_At: null },
+        $inc: { tokens: -tokenAmount }
+      });
+
+    } else if (packageType === "course") {
+      // Remove course enrollment from user
+      await _user2.default.findByIdAndUpdate(userId, { $pull: { courses: course } });
+      // Decrement the course purchase count
+      await _courses2.default.findByIdAndUpdate(course, { $inc: { bought: -1 } });
+    }
+
+    // === ROLLBACK LOGIC ENDS HERE ===
+
+    // Mark payment as refunded
+    await _payment2.default.findByIdAndUpdate(paymentId, { status: "refunded" });
+
     return res.status(200).json({ success: true, refund });
+
   } catch (error) {
     console.error("Error processing refund:", error);
     return next(_boom2.default.internal("Error processing refund."));
   }
 }; exports.refundPayment = refundPayment;
+
 
  const getRevenueStats = async (req, res, next) => {
   try {

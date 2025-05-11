@@ -8,6 +8,7 @@ var _ratelimiter = require('./rate-limiter'); var _ratelimiter2 = _interopRequir
 var _routes = require('./routes'); var _routes2 = _interopRequireDefault(_routes);
 var _mongoose = require('mongoose'); var _mongoose2 = _interopRequireDefault(_mongoose);
 require('./utils/subs.js'); // Ensure correct path
+require('./utils/news.js'); // Ensure correct path
 var _path = require('path'); var _path2 = _interopRequireDefault(_path);
 var _http = require('http');
 var _socketio = require('socket.io');
@@ -20,14 +21,13 @@ const httpServer = _http.createServer.call(void 0, app);
 
 const io = new (0, _socketio.Server)(httpServer, {
   cors: {
-    origin: "https://opulententrepreneurs.business", // Allowed domain
+    origin: ['https://opulententrepreneurs.business','https://www.opulententrepreneurs.business','http://localhost:3000'], // Allowed domain
     methods: ["GET", "POST"]
   }
 });
 
 // Register socket handlers on connection
 io.on('connection', (socket) => {
-  console.log('New user connected');
   _indexjs.registerSocketHandlers.call(void 0, socket, io);
   _audioHandlersjs.registerAudioCallHandlers.call(void 0, socket, io, _users.user);
 
@@ -40,11 +40,45 @@ io.on('connection', (socket) => {
 });
 
 // Middleware
+// Make sure this is before any of your routes, including /proxy-download:
 app.use(_cors2.default.call(void 0, {
-  origin: "https://opulententrepreneurs.business", // Allow only this domain
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"]
+  origin: ['https://opulententrepreneurs.business',
+           'https://www.opulententrepreneurs.business',
+           'http://localhost:3000'],
+           methods: ["GET", "POST", "PUT", "OPTIONS"],// include OPTIONS
+  allowedHeaders: ["Origin","X-Requested-With",
+                   "Content-Type","Accept","Authorization"]
 }));
+
+// Then your proxy-download route, untouched by manual CORS headers:
+app.get('/proxy-download', async (req, res, next) => {
+  const { fileUrl } = req.query;
+  if (!fileUrl) {
+    return res.status(400).json({ error: "Missing fileUrl query parameter" });
+  }
+  try {
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+      return res.status(500).json({ error: "Failed to fetch file" });
+    }
+    // copy content-type from upstream
+    res.setHeader('Content-Type',
+                  response.headers.get('content-type') || 'application/octet-stream');
+
+    // stream it down
+    const nodeStream = _stream.Readable.fromWeb(response.body);
+    nodeStream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+app.use(
+  "/downloads",
+  _express2.default.static(_path2.default.join(process.cwd(), "public", "downloads"))
+);
+
 
 app.use(_ratelimiter2.default);
 app.use(_express2.default.json());
@@ -65,18 +99,17 @@ app.get('/proxy-download', async (req, res, next) => {
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch file" });
     }
-    // Set the necessary CORS and content type headers.
-    res.setHeader('Access-Control-Allow-Origin', 'https://opulententrepreneurs.business');
-    res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
-    
-    // Convert the web ReadableStream to a Node.js Readable stream.
+    // copy content-type from upstream
+    res.setHeader('Content-Type',
+                  response.headers.get('content-type') || 'application/octet-stream');
+
+    // stream it down
     const nodeStream = _stream.Readable.fromWeb(response.body);
     nodeStream.pipe(res);
   } catch (error) {
     next(error);
   }
 });
-
 // API Routes
 app.use(_routes2.default);
 

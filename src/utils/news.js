@@ -9,7 +9,6 @@ cron.schedule(
   "0 0 * * *",
   async () => {
     const now = moment().tz("America/Toronto");
-    console.log(`🗞️ [${now.format()}] Fetching top 5 Canadian headlines…`);
 
     try {
       const API_KEY = process.env.GNEWS_API_KEY;
@@ -36,11 +35,9 @@ cron.schedule(
         doc.content = content;
         doc.link    = link;
         await doc.save();
-        console.log(`✅ Replaced first News doc (id=${doc._id})`);
       } else {
         doc = new News({ img, title, content, link });
         await doc.save();
-        console.log(`✅ Created first News doc (id=${doc._id})`);
       }
     } catch (err) {
       console.error("❌ Error in newsCron:", err);

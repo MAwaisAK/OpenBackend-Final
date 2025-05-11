@@ -118,6 +118,10 @@ const UserSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Mytribe', // Reference with correct capitalization
   }],
+  admin_tribes: [{
+    type: Schema.Types.ObjectId,
+    ref: 'Mytribe', // Reference with correct capitalization
+  }],
   blockedbytribe: [{
     type: Schema.Types.ObjectId,
     ref: 'Mytribe', // Reference with correct capitalization
@@ -163,6 +167,7 @@ const UserSchema = new Schema({
   },
   subscription: {
     type: String,
+    default:'none',
     enum: ["none","trial", "basic", "premium"],
   },
   period: {

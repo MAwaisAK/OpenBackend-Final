@@ -99,6 +99,7 @@ router.get("/tribers", _jwt.verifyAccessToken, _auth2.default.getAllTribersForUs
 
 // Route to get all tribes for the current user
 router.get("/tribes", _jwt.verifyAccessToken, _auth2.default.getAllTribesForUser);
+router.delete('/user/:id', _jwt.verifyAccessToken, _auth2.default.deleteUser);
 
 // Route to get all blocked users for the current user
 router.get("/blocked", _jwt.verifyAccessToken, _auth2.default.getAllBlockedForUser);
@@ -112,5 +113,10 @@ router.put("/kick-user", _jwt.verifyAccessToken, _auth2.default.kickUserFromTrib
 
 // Route to get all members of a tribe
 router.get("/members/:tribeId", _jwt.verifyAccessToken, _auth2.default.getTribeMembers);
+router.get(
+  '/users/info',
+  _jwt.verifyAccessToken,
+  _auth2.default.getUsersChatInfo
+);
 
 exports. default = router;

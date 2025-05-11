@@ -10,7 +10,6 @@ const redis = require("../../clients/redis").default;
 // Admin Login with access & refresh token logic
 export const loginAdmin = async (req, res, next) => {
   const input = req.body;
-  console.log(input);
   try {
     // 1. Find admin by username
     const admin = await Admin.findOne({ username: input.username });
@@ -39,7 +38,6 @@ export const loginAdmin = async (req, res, next) => {
     delete adminData.password;
     delete adminData.__v;
 
-    console.log("Admin logged in data:", { admin: adminData, accessToken, refreshToken });
 
     // 6. Send response
     res.json({ admin: adminData, accessToken, refreshToken });

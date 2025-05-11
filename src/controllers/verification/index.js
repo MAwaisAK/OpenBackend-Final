@@ -10,8 +10,8 @@ const transporter = nodemailer.createTransport({
   port: 465,  // Port number for Hostinger SMTP (587 for TLS)
   secure: true,  // TLS/SSL setting (use 'true' for port 465, 'false' for port 587)
   auth: {
-    user: "no-reply@opulententrepreneurs.business", // Replace with your Hostinger email
-    pass: "0p3nPreneur!",  // Replace with your email password
+    user: "no-reply@openpreneurs.business", // Replace with your Hostinger email
+    pass: "1mpactLiv!ng",  // Replace with your email password
   },
 });
 const verifyEmail = async (req, res, next) => {
@@ -36,10 +36,8 @@ const verifyEmail = async (req, res, next) => {
 
 const forgotPassword = async (req, res, next) => {
   const  mail = req.body;
-  console.log(mail);
   const email = mail.email.email;
   const url =  mail.email.frontendUrl;
-  console.log(mail.email.email);
 
   try {
       const user = await User.findOne({ email });
@@ -56,7 +54,7 @@ const forgotPassword = async (req, res, next) => {
       // Send reset password email
       const resetLink = `${url}/reset-password/${resetToken}`; // Link should lead to a reset password form
       const mailOptions = {
-          from: "no-reply@opulententrepreneurs.business",
+          from: "no-reply@openpreneurs.business",
           to: email,
           subject: 'Password Reset Request',
           text: `${user.username}, Please click on the following link to reset your password: ${resetLink}`,
@@ -108,7 +106,7 @@ const sendContactEmail = async (req, res) => {
   const { name, email, phone, subject, message } = req.body;
 
   const mailOptions = {
-    from: "no-reply@opulententrepreneurs.business",
+    from: "no-reply@openpreneurs.business",
     to: email,  // Replace with the email that should receive messages
     subject: `Contact Us Form: ${subject}`,
     text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nMessage: ${message}`,

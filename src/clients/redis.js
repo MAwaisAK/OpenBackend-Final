@@ -8,7 +8,6 @@ const redis = new Redis({
 });
 
 redis.on('connect', () => {
-  console.log('Connected to local Redis');
 });
 
 redis.on('error', (err) => {

@@ -12,8 +12,6 @@ export const createOrUpdateCategory = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid request data" });
     }
 
-    console.log("Updating category:", arrayName, value);
-
     const category = await Category.findOneAndUpdate(
       {}, // Find the single category document
       { $addToSet: { [arrayName]: value } }, // Add value to array (prevent duplicates)

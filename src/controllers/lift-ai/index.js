@@ -12,65 +12,83 @@ export const chat = async (req, res, next) => {
       return next(Boom.badRequest("userId is required"));
     }
 
+    // Fetch pricing config
+    const pricingConfig = await Price.findOne();
+    if (!pricingConfig) {
+      return next(Boom.internal("Pricing configuration not found"));
+    }
+    const characterPerToken = pricingConfig.Characterpertoken || 4;
+    const finalDiscount = pricingConfig.FinalDiscount || 0;
+    const discountMultiplier = 1 - finalDiscount / 100;
+
+    // Estimate tokens for user's message
+    const tokensForMessage = Math.ceil(message.length / characterPerToken);
+    const discountedTokensForMessage =
+      Math.ceil(tokensForMessage * discountMultiplier);
+
+    // Check user's balance
+    const userDoc = await User.findById(userId);
+    if (!userDoc) {
+      return next(Boom.notFound("User not found"));
+    }
+    if ((userDoc.tokens || 0) < discountedTokensForMessage) {
+      return next(Boom.badRequest("Not enough tokens to send message"));
+    }
+
+    // Actually handle the AI call
     const reply = await handleUserInput(userId, message);
 
-    // If a document URL was returned, shortcut the response
+    // Short‐circuit if it's a file download
     if (typeof reply === "object" && reply.downloadUrl) {
       return res.json({ downloadUrl: reply.downloadUrl });
     }
 
-    // Calculate tokens used
-   // Fetch pricing configuration from the database
-   const pricingConfig = await Price.findOne();
-   if (!pricingConfig) {
-     return next(Boom.internal("Pricing configuration not found"));
-   }
+    // Compute tokens for message + reply
+    const totalChars = message.length + reply.length;
+    const tokensUsed = Math.ceil(totalChars / characterPerToken);
+    const discountedTokens = Math.ceil(tokensUsed * discountMultiplier);
 
-   const characterPerToken = pricingConfig.Characterpertoken || 4; // default fallback
-   const finalDiscount = pricingConfig.FinalDiscount || 0;        // default fallback (no discount)
-   const discountMultiplier = 1 - finalDiscount / 100;
+    // === NEW: 15‐minute window logic for Prompts collection ===
+    // Find the latest prompt record for this user
+    let lastPrompt = await Prompts.findOne({ user: userId })
+      .sort({ createdAt: -1 })
+      .exec();
 
-   // Calculate tokens used
-   const totalCharacters = message.length + reply.length;
-   const tokensUsedRaw = totalCharacters / characterPerToken;
-   const tokensUsed = Math.ceil(tokensUsedRaw);
+    const FIFTEEN_MINUTES = 15 * 60 * 1000;
+    const now = Date.now();
 
-   // Apply Final Discount
- 
-
-    // Find or create prompt document and update tokens only
-    let promptDoc = await Prompts.findOne({ user: userId, sessionActive: true });
-    if (!promptDoc) {
+    let promptDoc;
+    if (!lastPrompt || now - lastPrompt.createdAt.getTime() > FIFTEEN_MINUTES) {
+      // Older than 15 min (or none exists) → start a brand new record
       promptDoc = new Prompts({
         user: userId,
         tokens_used: tokensUsed,
-        sessionActive: true
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
     } else {
-      promptDoc.tokens_used += tokensUsed;
+      // Within 15 min → just increment the existing one
+      lastPrompt.tokens_used += tokensUsed;
+      lastPrompt.updatedAt = new Date();
+      promptDoc = lastPrompt;
     }
     await promptDoc.save();
 
-    // Deduct 50% discounted tokens from user account
-    const discountedTokens = Math.ceil(tokensUsed * discountMultiplier); // Apply the discount to the tokens
-    const cost = discountedTokens; // Final cost after discount
-    const userDoc = await User.findById(userId);
-    if (userDoc) {
-      userDoc.tokens = Math.max(0, (userDoc.tokens || 0) - cost);
-      await userDoc.save();
-    }
+    // Deduct tokens from the user account
+    userDoc.tokens = Math.max(0, (userDoc.tokens || 0) - discountedTokens);
+    await userDoc.save();
 
     return res.json({
       reply,
       tokensUsed,
       totalTokensUsed: promptDoc.tokens_used
     });
-
   } catch (err) {
     console.error("Chat error:", err);
     return res.status(500).json({ error: "Error processing your request" });
   }
 };
+
 
 // Get LiftAi prompt data. Always fetches from the database.
 export const getPrompt = async (req, res, next) => {

@@ -49,7 +49,6 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
 
 export const deleteFromFirebase = async (photoUrl) => {
   try {
-    console.log(`File Path : ${photoUrl}`);
     const decodedUrl = decodeURIComponent(photoUrl);
     const pathStartIndex = decodedUrl.indexOf("/o/") + 3;
     const pathEndIndex = decodedUrl.indexOf("?alt=media");
@@ -65,7 +64,6 @@ export const deleteFromFirebase = async (photoUrl) => {
 
     const file = bucket.file(filePath);
     await file.delete();
-    console.log(`Successfully deleted ${filePath} from Firebase Storage.`);
   } catch (error) {
     console.error("Error deleting file from Firebase Storage:", error);
   }
@@ -76,7 +74,6 @@ export const deleteFromFirebase = async (photoUrl) => {
  */
 export const createCourse = async (req, res, next) => {
   try {
-    console.log(req.body);
     const { title, Author, AuthorLink, courseCategory, description, courseContent, shortdescription, price } = req.body;
 
     // Parse links arrays sent as JSON strings.
@@ -147,7 +144,6 @@ export const createCourse = async (req, res, next) => {
       }));
 
       await Notification.bulkWrite(bulkOperations);
-      console.log("Sent course creation notification to all users.");
     } else {
       console.warn("No users found to send course creation notification.");
     }
@@ -208,7 +204,6 @@ export const deleteCourse = async (req, res, next) => {
       { courses: courseId },
       { $pull: { courses: courseId } }
     );
-    console.log(`Removed course ${courseId} from users' courses arrays.`);
 
     // --- Notification Logic for Course Deletion ---
     // Prepare a notification message for the deleted course.
@@ -234,7 +229,6 @@ export const deleteCourse = async (req, res, next) => {
       }));
 
       await Notification.bulkWrite(bulkOperations);
-      console.log("Sent course deletion notification to all users.");
     } else {
       console.warn("No users found to send course deletion notification.");
     }
@@ -342,7 +336,6 @@ export const getCoursesByCategory = async (req, res, next) => {
 
 export const getAllUserCourses = async (req, res, next) => {
   try {
-    console.log("🔍 GET /user-course called");
     const courses = await Course.find({ status: true }).select(
       "title Author thumbnail courseCategory shortdescription status price"
     );
@@ -357,7 +350,6 @@ export const getCoursesByIds = async (req, res, next) => {
   try {
     const { courseIds } = req.body; // Expecting an array of course IDs in the request body
 
-    console.log("🔍 GET /user-courses by IDs:", courseIds);
 
     if (!Array.isArray(courseIds) || courseIds.length === 0) {
       return res.status(400).json({ success: false, message: "courseIds array is required." });

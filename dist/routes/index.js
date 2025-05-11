@@ -17,10 +17,12 @@ var _stats = require('./stats'); var _stats2 = _interopRequireDefault(_stats); /
 var _categories = require('./categories'); var _categories2 = _interopRequireDefault(_categories);
 //import reports from './reports';
 var _verification = require('./verification'); var _verification2 = _interopRequireDefault(_verification);
+var _news = require('./news'); var _news2 = _interopRequireDefault(_news);
 var _images = require('./images'); var _images2 = _interopRequireDefault(_images);
 var _testimonals = require('./testimonals'); var _testimonals2 = _interopRequireDefault(_testimonals);
 var _support = require('./support'); var _support2 = _interopRequireDefault(_support);
 var _notifications = require('./notifications'); var _notifications2 = _interopRequireDefault(_notifications);
+var _admin = require('./admin'); var _admin2 = _interopRequireDefault(_admin);
 var _payment = require('./payment'); var _payment2 = _interopRequireDefault(_payment);
 const router = _express.Router.call(void 0, );
 
@@ -33,19 +35,17 @@ router.use('/',_uploads2.default);
 router.use('/messages', _message2.default);
 router.use('/course', _course2.default);
 router.use('/tool', _tools2.default);
-router.use("/my-tribes", _mytribes2.default); // New endpoint: /lift-ai
-router.use("/lift-ai", _liftai2.default); // New endpoint: /lift-ai
-router.use("/price", _price2.default); // New endpoint: /lift-ai
+router.use("/my-tribes", _mytribes2.default);
+router.use("/lift-ai", _liftai2.default);
+router.use("/price", _price2.default); 
 router.use("/testimonals", _testimonals2.default); 
-router.use("/support", _support2.default); // New endpoint: /lift-ai
-router.use("/notifications", _notifications2.default); // New endpoint: /lift-ai
-router.use("/payment", _payment2.default); // New endpoint: /lift-ai
-router.use("/stats", _stats2.default); // New endpoint: /lift-ai
-//router.use('/product', product);
-//router.use('/mycron', Cron);
-//router.use('/order', verifyAccessToken, order);
+router.use("/admin", _admin2.default); 
+router.use("/news", _news2.default); 
+router.use("/support", _support2.default);
+router.use("/notifications", _notifications2.default);
+router.use("/payment", _payment2.default);
+router.use("/stats", _stats2.default);
 router.use('/categories', _categories2.default);
-//router.use('/reports', reports);
 router.use('/images', _images2.default );
 
 

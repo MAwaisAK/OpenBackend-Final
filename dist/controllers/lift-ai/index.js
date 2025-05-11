@@ -1,72 +1,79 @@
 "use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }var _liftaijs = require('../../models/lift-ai.js'); var _liftaijs2 = _interopRequireDefault(_liftaijs);
+var _pricejs = require('../../models/price.js'); var _pricejs2 = _interopRequireDefault(_pricejs);
 var _boom = require('boom'); var _boom2 = _interopRequireDefault(_boom);
-var _openai = require('openai'); var _openai2 = _interopRequireDefault(_openai);
 var _userjs = require('../../models/user.js'); var _userjs2 = _interopRequireDefault(_userjs);
 var _userpromptsjs = require('../../models/userprompts.js'); var _userpromptsjs2 = _interopRequireDefault(_userpromptsjs);
+var _bA = require('../bA');
 
-// Initialize OpenAI (ensure your .env file includes OPENAI_API_KEY)
-const openai = new (0, _openai2.default)({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// Chat function – sends the user’s message to OpenAI, returns the AI response,
-// appends the conversation pair to an active session in the Prompts model,
-// and deducts tokens from the user's account using a 50% discount rate.
-const chat = async (req, res, next) => {
+ const chat = async (req, res, next) => {
   try {
     const { message, userId } = req.body;
-    console.log("Received message:", message);
+    if (!userId) {
+      return next(_boom2.default.badRequest("userId is required"));
+    }
 
-    // Get AI response
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [{ role: "user", content: message }],
-    });
+    const reply = await _bA.handleUserInput.call(void 0, userId, message);
 
-    const reply = response.choices[0].message.content;
+    // If a document URL was returned, shortcut the response
+    if (typeof reply === "object" && reply.downloadUrl) {
+      return res.json({ downloadUrl: reply.downloadUrl });
+    }
 
     // Calculate tokens used
-    const tokensUsed = response.usage && response.usage.total_tokens
-      ? response.usage.total_tokens
-      : Math.ceil((message.length + reply.length) / 4);
+   // Fetch pricing configuration from the database
+   const pricingConfig = await _pricejs2.default.findOne();
+   if (!pricingConfig) {
+     return next(_boom2.default.internal("Pricing configuration not found"));
+   }
 
-    // Find or create a prompt session
+   const characterPerToken = pricingConfig.Characterpertoken || 4; // default fallback
+   const finalDiscount = pricingConfig.FinalDiscount || 0;        // default fallback (no discount)
+   const discountMultiplier = 1 - finalDiscount / 100;
+
+   // Calculate tokens used
+   const totalCharacters = message.length + reply.length;
+   const tokensUsedRaw = totalCharacters / characterPerToken;
+   const tokensUsed = Math.ceil(tokensUsedRaw);
+
+   // Apply Final Discount
+ 
+
+    // Find or create prompt document and update tokens only
     let promptDoc = await _userpromptsjs2.default.findOne({ user: userId, sessionActive: true });
-
     if (!promptDoc) {
       promptDoc = new (0, _userpromptsjs2.default)({
         user: userId,
-        entered_prompt: [],
-        tokens_used: 0,
-        sessionActive: true,
+        tokens_used: tokensUsed,
+        sessionActive: true
       });
+    } else {
+      promptDoc.tokens_used += tokensUsed;
     }
-
-    // Append conversation and update total tokens
-    promptDoc.entered_prompt.push([`user ${message}`, `bot ${reply}`]);
-    promptDoc.tokens_used += tokensUsed;
-
     await promptDoc.save();
 
-    // Deduct cost from user tokens (50% discount)
-    const cost = Math.ceil(tokensUsed * 0.5);
+    // Deduct 50% discounted tokens from user account
+    const discountedTokens = Math.ceil(tokensUsed * discountMultiplier); // Apply the discount to the tokens
+    const cost = discountedTokens; // Final cost after discount
     const userDoc = await _userjs2.default.findById(userId);
-
     if (userDoc) {
       userDoc.tokens = Math.max(0, (userDoc.tokens || 0) - cost);
       await userDoc.save();
     }
 
-    return res.json({ reply, tokensUsed, totalTokensUsed: promptDoc.tokens_used });
-  } catch (error) {
-    console.error("Chat error:", error);
+    return res.json({
+      reply,
+      tokensUsed,
+      totalTokensUsed: promptDoc.tokens_used
+    });
+
+  } catch (err) {
+    console.error("Chat error:", err);
     return res.status(500).json({ error: "Error processing your request" });
   }
-};
-
+}; exports.chat = chat;
 
 // Get LiftAi prompt data. Always fetches from the database.
-const getPrompt = async (req, res, next) => {
+ const getPrompt = async (req, res, next) => {
   try {
     const liftAiDoc = await _liftaijs2.default.findOne();
     if (!liftAiDoc) {
@@ -76,27 +83,29 @@ const getPrompt = async (req, res, next) => {
   } catch (error) {
     return next(_boom2.default.internal("Error fetching LiftAi prompt data", error));
   }
-};
+}; exports.getPrompt = getPrompt;
 
-// Update LiftAi prompt data. Expects a payload with a "questions" array.
-const updatePrompt = async (req, res, next) => {
+// PUT /api/lift-ai/prompt
+ const updatePrompt = async (req, res, next) => {
   try {
-    const { questions } = req.body;
-    if (!questions || !Array.isArray(questions)) {
-      return next(_boom2.default.badRequest("Questions is required and must be an array."));
+    const { prompt } = req.body;
+    if (typeof prompt !== "string" || prompt.trim().length === 0) {
+      return next(_boom2.default.badRequest("`prompt` is required and must be a non-empty string."));
     }
+
     let liftAiDoc = await _liftaijs2.default.findOne();
     if (!liftAiDoc) {
-      liftAiDoc = new (0, _liftaijs2.default)({ questions });
+      liftAiDoc = new (0, _liftaijs2.default)({ prompt: prompt.trim() });
     } else {
-      liftAiDoc.questions = questions;
+      liftAiDoc.prompt = prompt.trim();
     }
+
     await liftAiDoc.save();
     return res.status(200).json({ success: true, data: liftAiDoc });
   } catch (error) {
     return next(_boom2.default.internal("Error updating LiftAi prompt data", error));
   }
-};
+}; exports.updatePrompt = updatePrompt;
 
 // Get user tokens for a given user by ID.
 const getUserTokens = async (req, res, next) => {
@@ -129,4 +138,4 @@ const getAllPrompts = async (req, res, next) => {
 
 
 
-exports. default = { chat, getPrompt, updatePrompt, getUserTokens, getAllPrompts };
+exports. default = { chat: exports.chat, getPrompt: exports.getPrompt, updatePrompt: exports.updatePrompt, getUserTokens, getAllPrompts };

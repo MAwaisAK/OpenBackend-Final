@@ -7,10 +7,6 @@ const UserPromptSchema = new Schema({
     ref: 'User', // Reference to the User model
     required: true,
   },
-  entered_prompt: {
-    type: [[String]], // 2D array to store conversation pairs [user message, AI reply]
-    default: [],
-  },
   tokens_used: {
     type: Number, // Total tokens used in the session
     default: 0,

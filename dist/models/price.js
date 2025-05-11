@@ -35,6 +35,12 @@ const PriceSchema = new Schema(
         tokens: { type: Number, required: true, default: 0.0 },
       },
     },
+    Characterpertoken: {
+      type: Number, required: true, default: 0.0,
+    },
+    FinalDiscount: {
+      type: Number, required: true, default: 0.0,
+    },
   },
   { timestamps: true }
 );

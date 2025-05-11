@@ -20,8 +20,8 @@ const transporter = nodemailer.createTransport({
   port: 465,  // Port number for Hostinger SMTP (587 for TLS)
   secure: true,  // TLS/SSL setting (use 'true' for port 465, 'false' for port 587)
   auth: {
-    user: "no-reply@opulententrepreneurs.business", // Replace with your Hostinger email
-    pass: "0p3nPreneur!",  // Replace with your email password
+    user: "no-reply@openpreneurs.business", // Replace with your Hostinger email
+    pass: "1mpactLiv!ng",  // Replace with your email password
   },
 });
 
@@ -132,11 +132,11 @@ const Register = async (req, res, next) => {
     const user = new User({ ...input, verified: "No", verificationToken });
     const data = await user.save();
 
-    const frontendUrl = input.frontendUrl || "https://opulententrepreneurs.business";
+    const frontendUrl = input.frontendUrl || "https://openpreneurs.business";
     const verificationLink = `${frontendUrl}/verify/${verificationToken}`;
 
     const mailOptions = {
-      from: "no-reply@opulententrepreneurs.business",
+      from: "no-reply@openpreneurs.business",
       to: input.email,
       subject: "Verify Your Email",
       text: `Please click on the following link to verify your email: ${verificationLink}`,
@@ -180,10 +180,10 @@ const Login = async (req, res, next) => {
         await user.save();
   
         // Send the new verification email
-        const frontendUrl = input.frontendUrl || "https://opulententrepreneurs.business";
+        const frontendUrl = input.frontendUrl || "https://openpreneurs.business";
         const verificationLink = `${frontendUrl}/verify/${verificationToken}`;
         const mailOptions = {
-          from: "no-reply@opulententrepreneurs.business",
+          from: "no-reply@openpreneurs.business",
           to: input.email, // Send to user's email
           subject: "Verify Your Email",
           text: `Please click on the following link to verify your email: ${verificationLink}`,
@@ -290,7 +290,6 @@ const RefreshToken = async (req, res, next) => {
 
 const Logout = async (req, res, next) => {
   const { refresh_token } = req.body;
-  console.log("abv",req.body);
 
   if (!refresh_token) {
       return next(Boom.badRequest("Refresh token missing."));
@@ -306,7 +305,6 @@ const Logout = async (req, res, next) => {
       // Correct Redis call
       const result = await redis.del(user_id.toString()); // Ensure it's a string
 
-      console.log(`Redis del result:`, result); // Debugging: Check if Redis `del` works
 
       res.json({ message: "Logout successful" });
   } catch (e) {
@@ -390,8 +388,7 @@ const updateAddress = async (req, res, next) => {
 };
 
 const getAddress = async (req, res, next) => {
-    const email = req.query.email; // Extract email from the query parameter
-    console.log(email);
+    const email = req.query.email; 
 
     if (!email) {
         return res.status(401).json({ message: "Email not found in request." }); // Return an error if email is not provided
@@ -432,15 +429,12 @@ export const Me = async (req, res, next) => {
     // 1️⃣ Try User
     const user = await User.findById(user_id).select("-password -__v");
     if (user) {
-      console.log("a");
       return res.json(user);
     }
 
     // 2️⃣ Fallback to Admin
     const admin = await Admin.findById(user_id).select("-password -__v");
     if (admin) {
-      console.log("b");
-      console.log(admin);
       return res.json(admin);
     }
 
@@ -454,11 +448,9 @@ export const Me = async (req, res, next) => {
 
 const updateUserInfo = async (req, res, next) => {
   try {
-    console.log("Request Body:", req.body);
     
     // Extract the user ID from URL params, body, or the authenticated user.
     const userId = req.params.id || req.body.id || req.user?.id;
-    console.log("User ID:", userId);
 
     if (!userId) {
       return next(Boom.badRequest("User ID is required."));
@@ -776,18 +768,15 @@ import { v4 as uuidv4 } from "uuid";
 const getOrCreateChatLobby = async (req, res, next) => {
   try {
     const { userId1, userId2 } = req.body;
-    console.log(req.body);
     if (!userId1 || !userId2) {
       return res.status(400).json({ message: "Both user IDs are required." });
     }
-    console.log(req.body);
     // Find if a chat lobby exists between these users
     const existingLobby = await ChatLobby.findOne({
       participants: { $all: [userId1, userId2] }
     }).populate("participants", "username profile_pic firstName lastName");
     
     if (existingLobby) {
-      console.log("Test");
       return res.status(200).json({ chatLobbyId: existingLobby.chatLobbyId });
     }
 
@@ -844,7 +833,6 @@ const getUserChatLobbies = async (req, res, next) => {
       select: "username profile_pic firstName lastName"
     });
 
-    console.log(chatLobbies);
     return res.json(chatLobbies);
   } catch (error) {
     next(error);
@@ -854,7 +842,6 @@ const getUserChatLobbies = async (req, res, next) => {
 const createChatLobby = async (req, res, next) => {
   try {
     const { userId1, userId2 } = req.body;
-    console.log(req.body);
     if (!userId1 || !userId2) {
       return res.status(400).json({ message: "Both user IDs are required." });
     }
@@ -900,26 +887,39 @@ const createChatLobby = async (req, res, next) => {
 
 import Message from "../../models/Message.js";
 
-const getChatMessages = async (req, res, next) => {
+export const getChatMessages = async (req, res, next) => {
   try {
     const { chatLobbyId } = req.params;
-    // Get the userId from the query parameter, or use the one provided by the token
-    const userId = req.query.userId || req.payload.user_id;
-    
-    const messages = await Message.find({
-      chatLobbyId,
-      deletedFor: { $ne: userId } // Exclude messages deleted for the user
-    }).populate("sender", "username");
+    const userId          = req.query.userId || req.payload?.user_id;
+    const page            = parseInt(req.query.page, 10) || 0;
+    const PAGE_SIZE       = 20;
 
-    if (!messages || messages.length === 0) {
-      return res.status(404).json({ message: "No messages found for this chat lobby" });
+    if (!chatLobbyId) {
+      return res.status(400).json({ message: "Chat Lobby ID is required." });
     }
 
-    res.json(messages);
+    // fetch newest first, +1 extra to check for more
+    const docs = await Message.find({
+      chatLobbyId,
+      deletedFor: { $ne: userId },
+    })
+      .sort({ sentAt: -1 })
+      .skip(page * PAGE_SIZE)
+      .limit(PAGE_SIZE + 1)
+      .populate("sender", "username")
+      .lean();
+
+    // if we got more than PAGE_SIZE, there's another page
+    const hasMore = docs.length > PAGE_SIZE;
+    // trim off the extra record, then reverse so client sees oldest→newest order
+    const messages = docs.slice(0, PAGE_SIZE).reverse();
+
+    return res.json({ messages, hasMore });
   } catch (error) {
     next(error);
   }
 };
+
 
 export const deleteChatLobbyForUser = async (req, res, next) => {
   try {
@@ -983,7 +983,6 @@ export const deleteChatLobbyForUser = async (req, res, next) => {
  */
 export const sendFriendRequest = async (req, res, next) => {
   try {
-    console.log("Request Body:", req.body);
     // Extract both targetUserId and currentUserId from the request body.
     const { targetUserId, currentUserId } = req.body;
     if (!targetUserId || !currentUserId) {
@@ -1039,8 +1038,7 @@ export const sendFriendRequest = async (req, res, next) => {
  */
 export const acceptFriendRequest = async (req, res, next) => {
   try {
-    const { targetUserId, currentUserId } = req.body; // targetUserId is the ID of the user who sent the friend request
-    console.log("Requests:", req.body);
+    const { targetUserId, currentUserId } = req.body;
     const requesterId = targetUserId;
     if (!requesterId || !currentUserId) {
       return next(Boom.badRequest("Requester ID and current user ID are required."));
@@ -1143,7 +1141,6 @@ export const rejectFriendRequest = async (req, res, next) => {
  */
 export const blockUser = async (req, res, next) => {
   try {
-    console.log(req.body);
     const { targetUserId,currentUserId } = req.body;
     if (!targetUserId || !currentUserId) {
       return next(Boom.badRequest("Target user ID and current user ID are required."));
@@ -1756,11 +1753,9 @@ const deleteChatForUser = async (req, res, next) => {
   try {
     const userId = req.body.userId || req.payload.user_id;
     const { chatLobbyId } = req.body;
-    console.log(req.body);
     if (!chatLobbyId) {
       return res.status(400).json({ error: "chatLobbyId is required" });
     }
-    console.log("aas");
     // Update the ChatLobby document:
     const updatedLobby = await ChatLobby.findOneAndUpdate(
       { chatLobbyId: chatLobbyId },
@@ -1768,7 +1763,6 @@ const deleteChatForUser = async (req, res, next) => {
       { new: true }
     );
     
-    console.log("aas");
     if (!updatedLobby) {
       return res.status(404).json({ error: "Chat lobby not found" });
     }
@@ -1778,7 +1772,6 @@ const deleteChatForUser = async (req, res, next) => {
       { chatLobbyId: chatLobbyId },
       { $addToSet: { deletedFor: userId } }
     );
-    console.log("aas");
     return res.json({
       updatedLobby,
       message: "Chat lobby and its messages have been deleted for the current user."
@@ -2125,25 +2118,31 @@ export const getUserProfileForChecker = async (req, res, next) => {
 
 export const getUserProfileForUser = async (req, res, next) => {
   try {
+    const limit = parseInt(req.query.limit) || 10;
     const page = parseInt(req.query.page) || 1;
-    const limit = 10;
+    const excludeIds = req.body.excludeIds || [];
 
-    // Get total user count (assuming unique users)
-    const totalUsers = await User.countDocuments();
-
-    // Fetch random unique users per page using aggregation
     const users = await User.aggregate([
-      { $sample: { size: totalUsers } }, // Randomize all users
-      // Group by _id to ensure uniqueness and take the first value for each field
       {
-        $group: {
-          _id: "$_id",
-          firstName: { $first: "$firstName" },
-          lastName: { $first: "$lastName" },
-          username: { $first: "$username" },
-          title: { $first: "$title" },
-          profile_pic: { $first: "$profile_pic" },
-          display_banner: { $first: "$display_banner" },
+        $match: {
+          _id: { $nin: excludeIds.map(id => new mongoose.Types.ObjectId(id)) },
+        },
+      },
+      {
+        $addFields: {
+          randomSort: { $rand: {} }, // assign a random number
+        },
+      },
+      { $sort: { randomSort: 1 } }, // sort by that random number
+      {
+        $project: {
+          _id: 1,
+          firstName: 1,
+          lastName: 1,
+          username: 1,
+          title: 1,
+          profile_pic: 1,
+          display_banner: 1,
         },
       },
       { $skip: (page - 1) * limit },
@@ -2153,14 +2152,14 @@ export const getUserProfileForUser = async (req, res, next) => {
     res.status(200).json({
       success: true,
       currentPage: page,
-      totalPages: Math.ceil(totalUsers / limit),
       data: users,
     });
   } catch (error) {
-    console.error("Error fetching user profiles:", error);
-    next(Boom.internal("Error fetching user profiles."));
+    console.error("Error fetching paginated random users:", error);
+    next(Boom.internal("Error fetching random users."));
   }
 };
+
 
 
 export const searchTribers = async (req, res, next) => {
@@ -2175,52 +2174,47 @@ export const searchTribers = async (req, res, next) => {
         .json({ success: false, message: "Search query is required." });
     }
 
-    // Construct a case-insensitive regex for searching
-    const regex = new RegExp(query, "i");
+    const regex = new RegExp(query.trim(), "i");
 
-    // Use aggregation to match and then group by _id to ensure unique users.
-    const users = await User.aggregate([
-      {
-        $match: {
-          $or: [
-            { firstName: regex },
-            { lastName: regex },
-            { username: regex },
-          ],
+    const results = await User.aggregate([
+  {
+    $addFields: {
+      fullName: { $concat: ["$firstName", " ", "$lastName"] },
+    },
+  },
+  {
+    $match: {
+      $or: [
+        { fullName: regex },
+        { username: regex },
+      ],
+    },
+  },
+  {
+    $facet: {
+      data: [
+        {
+          $project: {
+            _id: 1,
+            firstName: 1,
+            lastName: 1,
+            username: 1,
+            title: 1,
+            profile_pic: 1,
+            display_banner: 1,
+          },
         },
-      },
-      {
-        $group: {
-          _id: "$_id",
-          firstName: { $first: "$firstName" },
-          lastName: { $first: "$lastName" },
-          username: { $first: "$username" },
-          title: { $first: "$title" },
-          profile_pic: { $first: "$profile_pic" },
-          display_banner: { $first: "$display_banner" },
-        },
-      },
-      { $skip: (page - 1) * limit },
-      { $limit: limit },
-    ]);
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      ],
+      totalCount: [{ $count: "count" }],
+    },
+  },
+]);
 
-    // Count total matching users using aggregation
-    const countResult = await User.aggregate([
-      {
-        $match: {
-          $or: [
-            { firstName: regex },
-            { lastName: regex },
-            { username: regex },
-          ],
-        },
-      },
-      {
-        $group: { _id: "$_id" },
-      },
-      { $count: "total" },
-    ]);
-    const totalUsers = countResult[0] ? countResult[0].total : 0;
+
+    const users = results[0].data;
+    const totalUsers = results[0].totalCount[0]?.count || 0;
 
     res.status(200).json({
       success: true,
@@ -2233,6 +2227,7 @@ export const searchTribers = async (req, res, next) => {
     next(Boom.internal("Error searching tribers."));
   }
 };
+
 
 
 

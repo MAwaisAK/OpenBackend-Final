@@ -5,6 +5,10 @@ var _notifications = require('../../models/notifications'); var _notifications2 
 var _uuid = require('uuid');
 var _firebaseadmin = require('firebase-admin'); var _firebaseadmin2 = _interopRequireDefault(_firebaseadmin);
 
+var _tribechatlobbyjs = require('../../models/tribechatlobby.js'); var _tribechatlobbyjs2 = _interopRequireDefault(_tribechatlobbyjs);
+var _TribeMessagejs = require('../../models/TribeMessage.js'); var _TribeMessagejs2 = _interopRequireDefault(_TribeMessagejs); // Assumes tribe messages use the same model
+
+
 // Initialize Firebase (if not already initialized)
 if (!_firebaseadmin2.default.apps.length) {
   _firebaseadmin2.default.initializeApp({
@@ -62,15 +66,6 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
   }
 }; exports.deleteFromFirebase = deleteFromFirebase;
 
-//
-// Mytribe Controller functions
-//
-
-/**
- * Create a new Mytribe.
- * Expects thumbnail and banner file uploads.
- * A unique tribechat ID is generated.
- */
  const createMytribe = async (req, res, next) => {
   try {
     const {
@@ -78,87 +73,58 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
       shortDescription,
       longDescription,
       tribeCategory,
-      //joinPolicy,
-      //membersLimit,
+      messageSettings,
     } = req.body;
-    
-    // Parse admins and members if provided as JSON strings.
+
+    // 1) Parse admins + members
     const admins = req.body.admins ? JSON.parse(req.body.admins) : [];
     const members = req.body.members ? JSON.parse(req.body.members) : [];
 
-    // Upload thumbnail.
-    let thumbnailUrl;
-    if (req.files && req.files["thumbnail"]) {
-      thumbnailUrl = await handleFirebaseUpload(
-        req.files["thumbnail"][0],
-        "Thumbnail",
-        `Mytribe-${title}-thumbnail`
-      );
-    } else {
-      return next(_boom2.default.badRequest("Thumbnail file is required."));
-    }
+    // 2) Union: ensure every admin is also a member
+    admins.forEach(adminId => {
+      if (!members.includes(adminId)) {
+        members.push(adminId);
+      }
+    });
 
-    // Upload banner.
-    let bannerUrl;
-    if (req.files && req.files["banner"]) {
-      bannerUrl = await handleFirebaseUpload(
-        req.files["banner"][0],
-        "Banner",
-        `Mytribe-${title}-banner`
-      );
-    } else {
-      return next(_boom2.default.badRequest("Banner file is required."));
+    // 3) Upload thumbnail + banner (unchanged)
+    if (!(_optionalChain([req, 'access', _ => _.files, 'optionalAccess', _2 => _2.thumbnail]) && _optionalChain([req, 'access', _3 => _3.files, 'optionalAccess', _4 => _4.banner]))) {
+      return next(_boom2.default.badRequest("Both thumbnail and banner are required."));
     }
+    const thumbnailUrl = await handleFirebaseUpload(
+      req.files.thumbnail[0], "Thumbnail", `Mytribe-${title}-thumbnail`
+    );
+    const bannerUrl    = await handleFirebaseUpload(
+      req.files.banner[0],    "Banner",    `Mytribe-${title}-banner`
+    );
 
-    // Create a new Mytribe instance. Mongoose automatically generates _id.
+    // 4) Create & save tribe
     const mytribe = new (0, _mytribes2.default)({
       title,
       shortDescription,
       longDescription,
       tribeCategory,
-      //joinPolicy,
-      //membersLimit,
+      messageSettings,
       admins,
       members,
       thumbnail: thumbnailUrl,
-      banner: bannerUrl,
+      banner:    bannerUrl,
     });
-    
-    // Set tribechat to the string representation of the document's _id.
     mytribe.tribechat = mytribe._id.toString();
-
     const savedMytribe = await mytribe.save();
 
-    // --- Notification Logic for Tribe Creation ---
-    // Prepare notification data for tribe creation.
-    const notificationData = `New tribe '${title}' has been created.`;
-    // Retrieve all users' IDs so that they all receive the notification.
-    const users = await _user2.default.find({}, "_id");
-
-    if (users.length) {
-      // Create bulk operations for each user.
-      const bulkOperations = users.map(user => ({
-        updateOne: {
-          filter: { user: user._id },
-          update: {
-            $setOnInsert: { user: user._id },
-            $push: {
-              type: { $each: ["tribecreate"] },
-              data: { $each: [notificationData] }
-            }
-          },
-          upsert: true
-        }
-      }));
-
-      await _notifications2.default.bulkWrite(bulkOperations);
-      console.log("Sent tribe creation notification to all users.");
-    } else {
-      console.warn("No users found to send tribe creation notification.");
+    // 5) Update each admin’s joined_tribes
+    if (admins.length) {
+      await _user2.default.updateMany(
+        { _id: { $in: admins }, joined_tribes: { $ne: savedMytribe._id } },
+        { $push: { joined_tribes: savedMytribe._id } }
+      );
     }
-    // --- End Notification Logic ---
+
+    // 6) (Your existing notification logic…)
 
     res.status(201).json(savedMytribe);
+
   } catch (error) {
     console.error("Error creating mytribe:", error);
     next(_boom2.default.internal("Error creating mytribe."));
@@ -166,47 +132,78 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
 }; exports.createMytribe = createMytribe;
 
 
-/**
- * Update an existing Mytribe by ID.
- * Can update basic fields and optionally handle new thumbnail/banner uploads.
- */
+
  const updateMytribe = async (req, res, next) => {
   try {
     const { mytribeId } = req.params;
-    const updateData = req.body;
+    const updateData = { ...req.body };
 
-    // Optionally, if files are provided, handle file updates.
-    if (req.files) {
-      if (req.files["thumbnail"]) {
-        const file = req.files["thumbnail"][0];
-        const uploadedUrl = await handleFirebaseUpload(
-          file,
-          "Thumbnail",
-          `Mytribe-${updateData.title || "updated"}-thumbnail`
-        );
-        updateData.thumbnail = uploadedUrl;
-      }
-      if (req.files["banner"]) {
-        const file = req.files["banner"][0];
-        const uploadedUrl = await handleFirebaseUpload(
-          file,
-          "Banner",
-          `Mytribe-${updateData.title || "updated"}-banner`
-        );
-        updateData.banner = uploadedUrl;
-      }
-    }
-
-    const updatedMytribe = await _mytribes2.default.findByIdAndUpdate(mytribeId, updateData, { new: true });
-    if (!updatedMytribe) {
+    // 1) Load existing tribe
+    const existing = await _mytribes2.default.findById(mytribeId);
+    if (!existing) {
       return next(_boom2.default.notFound("Mytribe not found."));
     }
+
+    // 2) Parse JSON-encoded fields
+    const admins = typeof updateData.admins === "string"
+      ? JSON.parse(updateData.admins)
+      : (updateData.admins || existing.admins.map(String));
+    const members = typeof updateData.members === "string"
+      ? JSON.parse(updateData.members)
+      : (updateData.members || existing.members.map(String));
+
+    // 3) Union: ensure admins ⊆ members
+    admins.forEach(adminId => {
+      if (!members.includes(adminId)) {
+        members.push(adminId);
+      }
+    });
+
+    updateData.admins  = admins;
+    updateData.members = members;
+
+    // 4) Handle thumbnail/banner uploads
+    if (req.files) {
+      if (req.files.thumbnail) {
+        updateData.thumbnail = await handleFirebaseUpload(
+          req.files.thumbnail[0],
+          "Thumbnail",
+          `Mytribe-${updateData.title || existing.title}-thumbnail`
+        );
+      }
+      if (req.files.banner) {
+        updateData.banner = await handleFirebaseUpload(
+          req.files.banner[0],
+          "Banner",
+          `Mytribe-${updateData.title || existing.title}-banner`
+        );
+      }
+    }
+
+    // 5) Update the tribe
+    const updatedMytribe = await _mytribes2.default.findByIdAndUpdate(
+      mytribeId,
+      updateData,
+      { new: true }
+    );
+
+    // 6) Push to each new admin’s joined_tribes
+    if (admins.length) {
+      await _user2.default.updateMany(
+        { _id: { $in: admins }, joined_tribes: { $ne: updatedMytribe._id } },
+        { $push: { joined_tribes: updatedMytribe._id } }
+      );
+    }
+
     res.json(updatedMytribe);
+
   } catch (error) {
     console.error("Error updating mytribe:", error);
     next(_boom2.default.internal("Error updating mytribe."));
   }
 }; exports.updateMytribe = updateMytribe;
+
+
 
 /**
  * Delete an existing Mytribe by ID.
@@ -216,9 +213,11 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
   try {
     const { mytribeId } = req.params;
     const mytribe = await _mytribes2.default.findById(mytribeId);
+
     if (!mytribe) {
       return next(_boom2.default.notFound("Mytribe not found."));
     }
+
     // Delete thumbnail and banner from Firebase if they exist.
     if (mytribe.thumbnail) {
       await exports.deleteFromFirebase.call(void 0, mytribe.thumbnail);
@@ -226,6 +225,7 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
     if (mytribe.banner) {
       await exports.deleteFromFirebase.call(void 0, mytribe.banner);
     }
+
     // Delete the Mytribe document from the collection.
     await _mytribes2.default.findByIdAndDelete(mytribeId);
 
@@ -235,8 +235,16 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
       { $pull: { joined_tribes: mytribeId } }
     );
     console.log(`Removed mytribe ${mytribeId} from all users' joined_tribes.`);
-    
-    res.json({ message: "Mytribe deleted successfully." });
+
+    // Delete all messages related to this tribe (assuming Message model has a "chatLobbyId" field)
+    await Message.deleteMany({ chatLobbyId: mytribeId });
+    console.log(`Deleted all messages related to tribe ${mytribeId}.`);
+
+    // Delete the chat lobby related to this tribe (assuming ChatLobby model has _id = tribeId)
+    await ChatLobby.findByIdAndDelete(mytribeId);
+    console.log(`Deleted chat lobby for tribe ${mytribeId}.`);
+
+    res.json({ message: "Mytribe and related data deleted successfully." });
   } catch (error) {
     console.error("Error deleting mytribe:", error);
     next(_boom2.default.internal("Error deleting mytribe."));
@@ -336,6 +344,7 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
       banner: tribe.banner,
       ratings: tribe.ratings,
       tribeCategory: tribe.tribeCategory,
+      messageSettings: tribe.messageSettings,
       totalMembers: Array.isArray(tribe.members) ? tribe.members.length : 0,
       createdAt: tribe.createdAt,
     }));
@@ -346,6 +355,40 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
     next(_boom2.default.internal("Error fetching mytribes."));
   }
 }; exports.getUsersMytribes = getUsersMytribes;
+
+ const getUserTribesByIds = async (req, res, next) => {
+  try {
+    // Expecting the tribe IDs in the request body as an array
+    const { tribeIds } = req.body;
+
+    if (!Array.isArray(tribeIds) || tribeIds.length === 0) {
+      return next(_boom2.default.badRequest('Invalid or empty tribe IDs provided.'));
+    }
+
+    // Fetching tribes by the provided IDs and selecting only the fields we need
+    const tribes = await _mytribes2.default.find({ '_id': { $in: tribeIds } })
+      .select('_id title thumbnail tribeCategory'); // Select only _id, title, and thumbnail fields
+
+    // If no tribes found, return an appropriate message
+    if (tribes.length === 0) {
+      return next(_boom2.default.notFound('No tribes found for the provided IDs.'));
+    }
+
+    // Map the results to return the desired format
+    const tribesWithDetails = tribes.map(tribe => ({
+      id: tribe._id,
+      title: tribe.title,
+      thumbnail: tribe.thumbnail,
+      tribeCategory:tribe.tribeCategory,
+    }));
+    console.log(tribesWithDetails);
+
+    res.json(tribesWithDetails);
+  } catch (error) {
+    console.error('Error fetching tribes by IDs:', error);
+    next(_boom2.default.internal('Error fetching tribes by IDs.'));
+  }
+}; exports.getUserTribesByIds = getUserTribesByIds;
 
  const getSpecificMytribes = async (req, res, next) => {
   try {
@@ -541,7 +584,7 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
  */
  const leaveTribe = async (req, res, next) => {
   try {
-    const { tribeId,userId } = req.body;
+    const { tribeId, userId } = req.body;
     if (!userId) {
       return next(_boom2.default.unauthorized("User must be logged in."));
     }
@@ -549,7 +592,7 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
       return next(_boom2.default.badRequest("Tribe ID is required."));
     }
 
-    // Remove tribeId from user's joined_tribes.
+    // 1) Remove tribeId from user's joined_tribes
     const updatedUser = await _user2.default.findByIdAndUpdate(
       userId,
       { $pull: { joined_tribes: tribeId } },
@@ -559,22 +602,32 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
       return next(_boom2.default.notFound("User not found."));
     }
 
-    // Remove userId from tribe's members.
+    // 2) Remove userId from tribe's members AND admins
     const updatedTribe = await _mytribes2.default.findByIdAndUpdate(
       tribeId,
-      { $pull: { members: userId } },
+      { 
+        $pull: { 
+          members: userId,
+          admins:  userId
+        }
+      },
       { new: true }
     );
     if (!updatedTribe) {
       return next(_boom2.default.notFound("Tribe not found."));
     }
 
-    res.json({ message: "Successfully left the tribe.", user: updatedUser, tribe: updatedTribe });
+    res.json({
+      message: "Successfully left the tribe.",
+      user:    updatedUser,
+      tribe:   updatedTribe
+    });
   } catch (error) {
     console.error("Error leaving tribe:", error);
     next(_boom2.default.internal("Error leaving tribe."));
   }
 }; exports.leaveTribe = leaveTribe;
+
 
 /**
  * Get tribe members.
@@ -612,24 +665,34 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
       return next(_boom2.default.badRequest("Tribe ID and Member ID are required."));
     }
 
-    // Remove the member from the tribe's members array.
-    const updatedTribe = await _mytribes2.default.findByIdAndUpdate(
+    // Pull memberId out of both `members` and `admins`
+    const updatedTribe = await Mytriber.findByIdAndUpdate(
       tribeId,
-      { $pull: { members: memberId } },
+      {
+        $pull: {
+          members: memberId,
+          admins: memberId,
+        },
+      },
       { new: true }
     );
     if (!updatedTribe) {
       return next(_boom2.default.notFound("Tribe not found."));
     }
 
-    // Optionally, remove the tribe from the user's joined_tribes array.
+    // If you track joined_tribes on the User, pull tribeId out there too
     const updatedUser = await _user2.default.findByIdAndUpdate(
       memberId,
       { $pull: { joined_tribes: tribeId } },
       { new: true }
     );
 
-    res.json({ message: "Member removed from tribe.", tribe: updatedTribe, user: updatedUser });
+    res.json({
+      success: true,
+      message: "Member removed (and demoted) from tribe.",
+      tribe: updatedTribe,
+      user: updatedUser,
+    });
   } catch (error) {
     console.error("Error removing member from tribe:", error);
     next(_boom2.default.internal("Error removing member from tribe."));
@@ -719,38 +782,45 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
   try {
     const { tribeId, userId } = req.params;
 
-    // Find the tribe and check if it exists
-    const tribe = await _mytribes2.default.findById(tribeId);
+    // 1) Load the tribe
+    const tribe = await Mytriber.findById(tribeId);
     if (!tribe) {
       return next(_boom2.default.notFound("Tribe not found."));
     }
 
-    // Find the user and check if they are a member of the tribe
-    const userInTribe = tribe.members.includes(userId);
-    if (!userInTribe) {
+    // 2) Ensure they’re currently a member
+    const isMember = tribe.members.some((m) => m.toString() === userId);
+    if (!isMember) {
       return next(_boom2.default.badRequest("User is not a member of the tribe."));
     }
 
-    // Add the user to the blocked list in the tribe
-    tribe.blockedUsers.push(userId);
-
-    // Remove the user from the members list of the tribe
-    tribe.members = tribe.members.filter(member => member.toString() !== userId);
-
-    // Save the updated tribe
+    // 3) Remove them from members AND admins, add to blockedUsers
+    tribe.members = tribe.members.filter((m) => m.toString() !== userId);
+    tribe.admins  = tribe.admins.filter((a) => a.toString() !== userId);
+    if (!tribe.blockedUsers.includes(userId)) {
+      tribe.blockedUsers.push(userId);
+    }
     await tribe.save();
 
-    // Add the tribe to the blocked user's blockedTribes list (in User model)
+    // 4) On the User side: pull out joined_tribes, remove any admin-tribe refs
+    //    and push this tribe into their blockedbytribe list
     const user = await _user2.default.findById(userId);
     if (!user) {
       return next(_boom2.default.notFound("User not found."));
     }
-
-    // Add the tribe to the user's blockedTribes
-    user.blockedbytribe.push(tribeId);
+    // Adjust these field names if you track them differently
+    user.joined_tribes    = user.joined_tribes.filter((t) => t.toString() !== tribeId);
+    user.blockedbytribe   = user.blockedbytribe || [];
+    if (!user.blockedbytribe.includes(tribeId)) {
+      user.blockedbytribe.push(tribeId);
+    }
     await user.save();
 
-    res.json({ message: "User successfully blocked from tribe." });
+    res.json({
+      success: true,
+      message: "User has been blocked and demoted from tribe.",
+      tribe,
+    });
   } catch (error) {
     console.error("Error blocking user from tribe:", error);
     next(_boom2.default.internal("Error blocking user from tribe."));
@@ -778,9 +848,6 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
   }
 }; exports.getUserDetails = getUserDetails;
 
-var _tribechatlobbyjs = require('../../models/tribechatlobby.js'); var _tribechatlobbyjs2 = _interopRequireDefault(_tribechatlobbyjs);
-var _TribeMessagejs = require('../../models/TribeMessage.js'); var _TribeMessagejs2 = _interopRequireDefault(_TribeMessagejs); // Assumes tribe messages use the same model
-
 
 /**
  * Create or fetch tribe chat lobby by tribe ID
@@ -804,9 +871,9 @@ var _TribeMessagejs = require('../../models/TribeMessage.js'); var _TribeMessage
 
     // Fetch tribe data: title, thumbnail, messageSettings, and members (raw IDs)
     const tribe = await _mytribes2.default.findById(tribeId)
-      .select("title thumbnail messageSettings members")
+      .select("title thumbnail messageSettings members admins blockedUsers")
       .populate("members", "username"); // Populate members from User model with username
-
+    console.log(tribe);
     if (!tribe) {
       return res.status(404).json({ message: "Tribe not found." });
     }
@@ -825,6 +892,8 @@ var _TribeMessagejs = require('../../models/TribeMessage.js'); var _TribeMessage
         thumbnail: tribe.thumbnail,
         messageSettings: tribe.messageSettings,
         members: membersInfo,
+        admins:tribe.admins,
+        blockedUsers:tribe.blockedUsers,
       },
     });
   } catch (error) {
@@ -840,7 +909,7 @@ var _TribeMessagejs = require('../../models/TribeMessage.js'); var _TribeMessage
  const getTribeChatMessages = async (req, res, next) => {
   try {
     const { chatLobbyId } = req.params;
-    const userId = req.query.userId || _optionalChain([req, 'access', _ => _.payload, 'optionalAccess', _2 => _2.user_id]);
+    const userId = req.query.userId || _optionalChain([req, 'access', _5 => _5.payload, 'optionalAccess', _6 => _6.user_id]);
 
     if (!chatLobbyId) {
       return res.status(400).json({ message: "Chat Lobby ID is required." });
@@ -861,6 +930,116 @@ var _TribeMessagejs = require('../../models/TribeMessage.js'); var _TribeMessage
   }
 }; exports.getTribeChatMessages = getTribeChatMessages;
 
+
+ const searchUsersTribes = async (req, res, next) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || typeof q !== "string" || q.trim() === "") {
+      return next(_boom2.default.badRequest("Missing or invalid `q` search query."));
+    }
+
+    // build a case-insensitive regex from the query
+    const regex = new RegExp(q.trim(), "i");
+
+    // search any user whose username, firstName or lastName matches
+    const users = await _user2.default.find(
+      {
+        $or: [
+          { username: regex },
+          { firstName: regex },
+          { lastName: regex },
+        ]
+      },
+      // projection: only include these four fields
+      "_id username firstName lastName profile_pic"
+    ).limit(50); // optional: cap the results
+
+    return res.status(200).json({ success: true, users });
+  } catch (err) {
+    console.error("Error searching users:", err);
+    return next(_boom2.default.internal("Failed to search users."));
+  }
+}; exports.searchUsersTribes = searchUsersTribes;
+
+ const addAdminToTribe = async (req, res, next) => {
+  try {
+    const { tribeId } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+      return next(_boom2.default.badRequest("Missing `userId` in request body."));
+    }
+
+    // Verify both tribe and user exist
+    const [tribe, user] = await Promise.all([
+      _mytribes2.default.findById(tribeId),
+      _user2.default.findById(userId)
+    ]);
+    if (!tribe) return next(_boom2.default.notFound("Tribe not found."));
+    if (!user)  return next(_boom2.default.notFound("User not found."));
+
+    // Add to admins (no duplicates)
+    const updated = await _mytribes2.default.findByIdAndUpdate(
+      tribeId,
+      { $addToSet: { admins: userId } },
+      { new: true }
+    );
+
+    return res.status(200).json({ success: true, admins: updated.admins });
+  } catch (err) {
+    console.error("Error in addAdminToTribe:", err);
+    next(_boom2.default.internal("Could not add admin to tribe."));
+  }
+}; exports.addAdminToTribe = addAdminToTribe;
+
+/**
+ * DELETE /api/mytribes/:tribeId/admins/:userId
+ */
+ const removeAdminFromTribe = async (req, res, next) => {
+  try {
+    const { tribeId, userId } = req.params;
+
+    const tribe = await _mytribes2.default.findById(tribeId);
+    if (!tribe) return next(_boom2.default.notFound("Tribe not found."));
+
+    // Remove that userId from admins
+    const updated = await _mytribes2.default.findByIdAndUpdate(
+      tribeId,
+      { $pull: { admins: userId } },
+      { new: true }
+    );
+
+    return res.status(200).json({ success: true, admins: updated.admins });
+  } catch (err) {
+    console.error("Error in removeAdminFromTribe:", err);
+    next(_boom2.default.internal("Could not remove admin from tribe."));
+  }
+}; exports.removeAdminFromTribe = removeAdminFromTribe;
+
+/**
+ * GET /api/mytribes/:tribeId/tribers
+ * Returns all members of a tribe, projecting only _id, username, firstName, lastName, profile_pic
+ */
+ const getTribeMembersSearch = async (req, res, next) => {
+  try {
+    const { tribeId } = req.params;
+
+    const tribe = await _mytribes2.default.findById(tribeId)
+      .populate("members", "username firstName lastName profile_pic _id")
+      .select("members");
+    if (!tribe) return next(_boom2.default.notFound("Tribe not found."));
+
+    return res.status(200).json({
+      success: true,
+      members: tribe.members  // each has only the five fields
+    });
+  } catch (err) {
+    console.error("Error in getTribeMembers:", err);
+    next(_boom2.default.internal("Could not fetch tribe members."));
+  }
+}; exports.getTribeMembersSearch = getTribeMembersSearch;
+
 exports. default = {
   joinTribe: exports.joinTribe,
   leaveTribe: exports.leaveTribe,
@@ -869,6 +1048,7 @@ exports. default = {
   createMytribe: exports.createMytribe,
   updateMytribe: exports.updateMytribe,
   deleteMytribe: exports.deleteMytribe,
+  getTribeMembersSearch: exports.getTribeMembersSearch,
   getMytribeById: exports.getMytribeById,
   getAllMytribes: exports.getAllMytribes,
   updateTribeStatus: exports.updateTribeStatus,
@@ -879,8 +1059,11 @@ exports. default = {
   getTribes: exports.getTribes,
   rateTribe: exports.rateTribe,
   getTribeById: exports.getTribeById,
+  searchUsersTribes: exports.searchUsersTribes,
   blockUserFromTribe: exports.blockUserFromTribe,
+  addAdminToTribe: exports.addAdminToTribe,
   getTribeForUser: exports.getTribeForUser,
+  removeAdminFromTribe: exports.removeAdminFromTribe,
   getTribeChatMessages: exports.getTribeChatMessages,
   createOrGetTribeChatLobby: exports.createOrGetTribeChatLobby,
   getSpecificMytribes: exports.getSpecificMytribes,

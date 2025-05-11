@@ -23,6 +23,9 @@ const MessageSchema = new Schema({
       return this.type === 'text';
     }
   },
+  reply: {
+    type: String,
+  },
   fileUrl: {
     type: String, // URL to the uploaded file (if any)
   },
@@ -37,6 +40,9 @@ const MessageSchema = new Schema({
   isAudio: {
     type: Boolean,
     default: false,
+  },
+  callStatus: {
+    type: String,
   },
   type: {
     type: String,

@@ -43,7 +43,6 @@ export const createReport = async (req, res, next) => {
       }
     }
     
-    console.log("Unique tickno generated:", tickno);
     
 
     const report = new Report({

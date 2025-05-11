@@ -6,10 +6,12 @@ const nodemailer = require("nodemailer");
 const crypto = require('crypto'); // For generating a unique verification token
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Use Gmail's SMTP
+  host: 'smtp.hostinger.com', // Hostinger SMTP server
+  port: 465,  // Port number for Hostinger SMTP (587 for TLS)
+  secure: true,  // TLS/SSL setting (use 'true' for port 465, 'false' for port 587)
   auth: {
-    user: "dgagdet@gmail.com",       // Replace with your Gmail address
-    pass: "povw eout pbkf inxa",       // Replace with your generated App Password
+    user: "no-reply@opulententrepreneurs.business", // Replace with your Hostinger email
+    pass: "0p3nPreneur!",  // Replace with your email password
   },
 });
 const verifyEmail = async (req, res, next) => {
@@ -54,7 +56,7 @@ const forgotPassword = async (req, res, next) => {
       // Send reset password email
       const resetLink = `${url}/reset-password/${resetToken}`; // Link should lead to a reset password form
       const mailOptions = {
-          from: "dgagdet@gmail.com",
+          from: "no-reply@opulententrepreneurs.business",
           to: email,
           subject: 'Password Reset Request',
           text: `${user.username}, Please click on the following link to reset your password: ${resetLink}`,
@@ -106,8 +108,8 @@ const sendContactEmail = async (req, res) => {
   const { name, email, phone, subject, message } = req.body;
 
   const mailOptions = {
-    from: "dgagdet@gmail.com",
-    to: "dgagdet@gmail.com",  // Replace with the email that should receive messages
+    from: "no-reply@opulententrepreneurs.business",
+    to: email,  // Replace with the email that should receive messages
     subject: `Contact Us Form: ${subject}`,
     text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nMessage: ${message}`,
   };

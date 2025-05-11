@@ -47,14 +47,12 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
 // Delete image from Firebase Storage
 const deleteFromFirebase = async (photoUrl) => {
   try {
-    console.log("Deleting file:", photoUrl);
     const decodedUrl = decodeURIComponent(photoUrl);
     const pathStartIndex = decodedUrl.indexOf("/o/") + 3;
     const pathEndIndex = decodedUrl.indexOf("?alt=media");
     const filePath = decodedUrl.slice(pathStartIndex, pathEndIndex);
     const file = bucket.file(filePath);
     await file.delete();
-    console.log(`Deleted file: ${filePath}`);
   } catch (error) {
     console.error("Error deleting file:", error);
   }
@@ -70,7 +68,6 @@ class TestimonalController {
 
       const file = req.files.img[0];
       const uploadedUrl = await handleFirebaseUpload(file, "Testimonals", "testimonal");
-      console.log(req.body);
       const { name, testimonal } = req.body;
       const newTestimonal = new Testimonal({
         img: uploadedUrl,

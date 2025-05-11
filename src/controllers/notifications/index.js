@@ -78,7 +78,6 @@ export const getUserNotifications = async (req, res, next) => {
  */
 export const removeNotificationItem = async (req, res, next) => {
   try {
-    console.log(req.body);
     const userId = req.query.userId || req.user?._id || req.user?.id;
     const { type, data } = req.body;
 

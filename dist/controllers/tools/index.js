@@ -1,4 +1,5 @@
 "use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }var _tools = require('../../models/tools'); var _tools2 = _interopRequireDefault(_tools);
+var _userjs = require('../../models/user.js'); var _userjs2 = _interopRequireDefault(_userjs);
 const Boom = require("boom");
 var _notificationsjs = require('../../models/notifications.js'); var _notificationsjs2 = _interopRequireDefault(_notificationsjs);
 const { v4: uuidv4 } = require("uuid");
@@ -115,7 +116,7 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
     // --- Notification Logic for Tool Creation ---
     const notificationData = `New tool '${title}' has been created.`;
     // Retrieve all users' IDs.
-    const users = await User.find({}, "_id");
+    const users = await _userjs2.default.find({}, "_id");
 
     if (users.length) {
       const bulkOperations = users.map(user => ({

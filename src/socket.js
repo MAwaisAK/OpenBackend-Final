@@ -38,7 +38,6 @@ app.post('/upload', upload.single('file'), (req, res, next) => {
 
 // Socket.IO connection and event handling.
 io.on('connection', (socket) => {
-  console.log('New user connected');
 
   // Client uses this event to join a specific chat lobby.
   socket.on('joinChatLobby', (params, callback) => {
@@ -170,5 +169,4 @@ io.on('connection', (socket) => {
 
 // Start the HTTP server.
 httpServer.listen(4000, () => {
-  console.log('Server is up on port 4000');
 });

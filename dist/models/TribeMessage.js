@@ -26,6 +26,9 @@ const MessageSchema = new Schema({
   fileUrl: {
     type: String, // URL to the uploaded file (if any)
   },
+  reply: {
+    type: String, // URL to the uploaded file (if any)
+  },
   isImage: {
     type: Boolean,
     default: false,
@@ -50,6 +53,10 @@ const MessageSchema = new Schema({
   sentAt: {
     type: Date,
     default: Date.now,
+  },
+  senderUsername: {
+    type: String,
+    required: true,
   },
 });
 

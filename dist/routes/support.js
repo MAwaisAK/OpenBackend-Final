@@ -65,7 +65,7 @@ router.get(
 );
 
 router.get(
-  "/user", // e.g., GET /api/report/user
+  "/user/:userId", // e.g., GET /api/report/user
   _jwt.verifyAccessToken,
   _support.getReportsForUser
 );

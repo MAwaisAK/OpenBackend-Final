@@ -75,7 +75,6 @@ const Create = async (req, res, next) => {
     activestatus 
   } = req.body;
   
-  console.log(req.body);
 
   // Validate the product details using the schema
 
@@ -220,7 +219,6 @@ const Get = async (req, res, next) => {
 
 const Update = async (req, res, next) => {
   const { product_id } = req.params;
-  console.log(req.body);
 
   // Validate the product details excluding files
   const {
@@ -523,11 +521,9 @@ const Update = async (req, res, next) => {
             // If the photo exists, delete it from Firebase
             if (photoUrl) {
               await deleteFromFirebase(photoUrl);
-              console.log(`Deleted photo at index ${adjustedIndex} from Firebase.`);
             }
       
             existingproductPhotos.splice(adjustedIndex, 1);
-            console.log(`Removed photo at index ${adjustedIndex} from existingproductPhotos.`);
           } else {
             console.warn(`Index ${adjustedIndex} is out of bounds for existingproductPhotos.`);
           }
@@ -585,8 +581,6 @@ const Update = async (req, res, next) => {
 
 const deleteFromFirebase = async (photoUrl) => {
   try {
-    // Decode the URL and extract the correct file path
-    console.log(`File Path : ${photoUrl}`);
     const decodedUrl = decodeURIComponent(photoUrl);
     const pathStartIndex = decodedUrl.indexOf('/o/') + 3;
     const pathEndIndex = decodedUrl.indexOf('?alt=media');
@@ -609,7 +603,6 @@ const deleteFromFirebase = async (photoUrl) => {
     // Attempt to delete the file from Firebase storage
     const file = bucket.file(filePath);
     await file.delete();
-    console.log(`Successfully deleted ${filePath} from Firebase Storage.`);
   } catch (error) {
     console.error(`Error deleting file from Firebase Storage:`, error);
   }
@@ -618,8 +611,6 @@ const deleteFromFirebase = async (photoUrl) => {
 const updateSale = async (req, res, next) => {
   // Destructure the nested productIds properly
   const { productIds, salePercentage, saleStartDate, saleEndDate, S, M, L, XL, XXL } = req.body.productIds;
-  console.log(req.body);
-
   let salestatus;
 
   try {
@@ -682,10 +673,6 @@ const updateSale = async (req, res, next) => {
       startDate = addOneDay(new Date(startDate));  // Add 1 day to startDate
       endDate = addOneDay(new Date(endDate));  // Add 1 day to endDate
       nowInPakistan = addOneDay(new Date(nowInPakistan));  // Add 1 day to nowInPakistan
-      
-      console.log("Updated startDate:", startDate); 
-      console.log("Updated endDate:", endDate); 
-      console.log("Updated nowInPakistan:", nowInPakistan);
       
       // Check if salePercentageNum is valid and if the sale is active based on the date
       if (isNaN(salePercentageNum) || salePercentageNum === 0) {

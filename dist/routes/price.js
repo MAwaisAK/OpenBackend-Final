@@ -11,35 +11,29 @@ var _price = require('../controllers/price');
 const router = _express2.default.Router();
 
 // Endpoint to get pricing details for small, large, and custom tiers.
-router.get(
-  "/small-large-custom",
-  _jwt.verifyAccessToken,
-  _grantAccess2.default.call(void 0, "readAny", "price"),
-  async (req, res, next) => {
-    try {
-      const pricing = await _price.getSmallLargeCustomPricing.call(void 0, );
-      res.json(pricing);
-    } catch (error) {
-      next(error);
-    }
+// Removed verifyAccessToken and grantAccess to allow access to all.
+router.get("/small-large-custom", async (req, res, next) => {
+  try {
+    const pricing = await _price.getSmallLargeCustomPricing.call(void 0, );
+    res.json(pricing);
+  } catch (error) {
+    next(error);
   }
-);
+});
 
 // Endpoint to get pricing details for basic and premium tiers.
-router.get(
-  "/basic-premium",
-  _jwt.verifyAccessToken,
-  _grantAccess2.default.call(void 0, "readAny", "price"),
-  async (req, res, next) => {
-    try {
-      const pricing = await _price.getBasicPremiumPricing.call(void 0, );
-      res.json(pricing);
-    } catch (error) {
-      next(error);
-    }
+// Removed verifyAccessToken and grantAccess to allow access to all.
+router.get("/basic-premium", async (req, res, next) => {
+  try {
+    const pricing = await _price.getBasicPremiumPricing.call(void 0, );
+    res.json(pricing);
+  } catch (error) {
+    next(error);
   }
-);
+});
 
+// Endpoint to get pricing details for all tiers.
+// Removed verifyAccessToken and grantAccess to allow access to all.
 router.get(
   "/",
   _jwt.verifyAccessToken,
@@ -53,8 +47,10 @@ router.get(
     }
   }
 );
+
 // Endpoint to update all pricing fields at once.
 // Expects a payload that matches the Price schema structure.
+// Kept the token verification and access control for this sensitive operation.
 router.put(
   "/",
   _jwt.verifyAccessToken,

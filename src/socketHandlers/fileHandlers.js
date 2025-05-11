@@ -43,7 +43,6 @@ export const uploadFileToFirebase = (file) => {
     // Create a unique file name
     const fileName = `${Date.now()}-${file.originalname}`;
     const blob = bucket.file(fileName);
-    console.log(blob);
     const blobStream = blob.createWriteStream({
       metadata: {
         contentType: file.mimetype,
@@ -76,7 +75,6 @@ export const registerFileHandlers = (socket, io) => {
     const user = users.getUser(socket.id);
     if (user && fileData && fileData.fileUrl) {
       try {
-        console.log("Processing new file message...");
         // Validate sender's ObjectId
         if (!mongoose.Types.ObjectId.isValid(user.userId)) {
           console.error("Invalid ObjectId for sender:", user.userId);
@@ -132,7 +130,6 @@ export const registerFileHandlers = (socket, io) => {
     const user = users.getUser(socket.id);
     if (user && fileData && fileData.fileUrl) {
       try {
-        console.log("Processing new file message...");
         // Validate sender's ObjectId
         if (!mongoose.Types.ObjectId.isValid(user.userId)) {
           console.error("Invalid ObjectId for sender:", user.userId);
@@ -203,7 +200,6 @@ socket.on('deleteMessage', async (data, callback) => {
         const encodedFileName = pathname.split('/o/')[1];
         const fileName = decodeURIComponent(encodedFileName.split('?')[0]);
         await bucket.file(fileName).delete();
-        console.log(`Deleted file ${fileName} from Firebase`);
       } catch (fileDelErr) {
         console.error("Error deleting file from Firebase:", fileDelErr);
       }
@@ -238,7 +234,6 @@ socket.on('deleteTribeMessage', async (data, callback) => {
         const encodedFileName = pathname.split('/o/')[1];
         const fileName = decodeURIComponent(encodedFileName.split('?')[0]);
         await bucket.file(fileName).delete();
-        console.log(`Deleted file ${fileName} from Firebase`);
       } catch (fileDelErr) {
         console.error("Error deleting file from Firebase:", fileDelErr);
       }

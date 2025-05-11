@@ -33,7 +33,6 @@ function deleteOldFiles(dir, maxAgeMinutes = 15) {
 // Runs every day at midnight Canadian Central Time
 cron.schedule('0 0 * * *', async () => {
   const now = moment().tz('America/Toronto'); // Canada Eastern Time Zone
-  console.log(`Running subscription check at ${now.format()}`);
 
   try {
     const users = await User.find({
@@ -70,7 +69,6 @@ cron.schedule('0 0 * * *', async () => {
           { $addToSet: { type: "7days", data: notificationText } },
           { upsert: true }
         );
-        console.log(`Sent 7-day reminder to ${user.email}`);
       }
 
       if (shouldDeactivate) {
@@ -85,8 +83,6 @@ cron.schedule('0 0 * * *', async () => {
           { $addToSet: { type: "over", data: notificationText } },
           { upsert: true }
         );
-
-        console.log(`Subscription expired for user: ${user.email}`);
       }
     }
 

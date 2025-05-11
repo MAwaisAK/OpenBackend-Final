@@ -1,5 +1,6 @@
 "use strict";Object.defineProperty(exports, "__esModule", {value: true}); function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }const Boom = require('boom');
 var _user = require('../../models/user'); var _user2 = _interopRequireDefault(_user);
+var _adminjs = require('../../models/admin.js'); var _adminjs2 = _interopRequireDefault(_adminjs);
 var _mytribesjs = require('../../models/mytribes.js'); var _mytribesjs2 = _interopRequireDefault(_mytribesjs);
 var _Messagejs = require('../../models/Message.js'); var _Messagejs2 = _interopRequireDefault(_Messagejs);
 var _notificationsjs = require('../../models/notifications.js'); var _notificationsjs2 = _interopRequireDefault(_notificationsjs);
@@ -15,12 +16,14 @@ const redis = require("../../clients/redis").default;
 const nodemailer = require('nodemailer');
 const crypto = require('crypto'); // For generating a unique verification token
 const transporter = nodemailer.createTransport({
-    service: 'gmail', // Use Gmail's SMTP
-    auth: {
-      user: "dgagdet@gmail.com",       // Replace with your Gmail address
-      pass: "povw eout pbkf inxa",       // Replace with your generated App Password
-    },
-  });
+  host: 'smtp.hostinger.com', // Hostinger SMTP server
+  port: 465,  // Port number for Hostinger SMTP (587 for TLS)
+  secure: true,  // TLS/SSL setting (use 'true' for port 465, 'false' for port 587)
+  auth: {
+    user: "no-reply@openpreneurs.business", // Replace with your Hostinger email
+    pass: "1mpactLiv!ng",  // Replace with your email password
+  },
+});
 
 const { v4: uuidv4 } = require("uuid");
 const admin = require("firebase-admin");
@@ -129,11 +132,11 @@ const Register = async (req, res, next) => {
     const user = new (0, _user2.default)({ ...input, verified: "No", verificationToken });
     const data = await user.save();
 
-    const frontendUrl = input.frontendUrl || "https://opulententrepreneurs.business";
+    const frontendUrl = input.frontendUrl || "https://openpreneurs.business";
     const verificationLink = `${frontendUrl}/verify/${verificationToken}`;
 
     const mailOptions = {
-      from: "dgagdet@gmail.com",
+      from: "no-reply@openpreneurs.business",
       to: input.email,
       subject: "Verify Your Email",
       text: `Please click on the following link to verify your email: ${verificationLink}`,
@@ -177,10 +180,10 @@ const Login = async (req, res, next) => {
         await user.save();
   
         // Send the new verification email
-        const frontendUrl = input.frontendUrl || "https://opulententrepreneurs.business";
+        const frontendUrl = input.frontendUrl || "https://openpreneurs.business";
         const verificationLink = `${frontendUrl}/verify/${verificationToken}`;
         const mailOptions = {
-          from: "dgagdet@gmail.com",
+          from: "no-reply@openpreneurs.business",
           to: input.email, // Send to user's email
           subject: "Verify Your Email",
           text: `Please click on the following link to verify your email: ${verificationLink}`,
@@ -198,6 +201,37 @@ const Login = async (req, res, next) => {
           );
         }
       }
+
+          // 2️⃣ PROFILE COMPLETENESS CHECK
+    const required = [
+      "profile_pic",
+      "display_banner",
+      "bio",
+      "primary_business",
+      "business_country",
+      "business_industry",
+      "value_chainstake",
+      "markets_covered",
+      "immediate_needs"
+    ];
+
+    const isIncomplete = required.some((field) => {
+      const val = user[field];
+      if (Array.isArray(val)) {
+        return val.length === 0;
+      }
+      // treat null, undefined, or empty string as missing
+      return !val;
+    });
+
+    if (isIncomplete) {
+      const notificationText = "Your profile isn't complete—please complete it kindly.";
+      await _notificationsjs2.default.updateOne(
+        { user: user._id },
+        { $addToSet: { type: "incomplete", data: notificationText } },
+        { upsert: true }
+      );
+    }
   
       const tokenExpiry = input.rememberMe ? "7d" : "1h"; // 7 days for "Remember Me", 1 hour otherwise
   
@@ -213,6 +247,22 @@ const Login = async (req, res, next) => {
       console.log("User logged in data:", { user: userData, accessToken, refreshToken });
   
       res.json({ user: userData, accessToken, refreshToken });
+    } catch (e) {
+      next(e);
+    }
+  };
+  
+  const deleteUser = async (req, res, next) => {
+    try {
+      const userId = req.params.id;
+  
+      const user = await _user2.default.findByIdAndDelete(userId);
+  
+      if (!user) {
+        return next(Boom.notFound("User not found."));
+      }
+  
+      res.json({ message: "User deleted successfully." });
     } catch (e) {
       next(e);
     }
@@ -371,20 +421,36 @@ const getAddress = async (req, res, next) => {
 };
 
 
-const Me = async (req, res, next) => {
-	const { user_id } = req.payload || { user_id: null };
+ const Me = async (req, res, next) => {
+  const { user_id } = req.payload || {};
 
-	try {
-		const user = await _user2.default.findById(user_id).select("-password -__v");
-		if (!user) {
-			res.json(0);
-		}
+  if (!user_id) {
+    return res.status(401).json({ message: "Unauthorized: no user ID in token." });
+  }
 
-		res.json(user);
-	} catch (e) {
-		next(e);
-	}
-};
+  try {
+    // 1️⃣ Try User
+    const user = await _user2.default.findById(user_id).select("-password -__v");
+    if (user) {
+      console.log("a");
+      return res.json(user);
+    }
+
+    // 2️⃣ Fallback to Admin
+    const admin = await _adminjs2.default.findById(user_id).select("-password -__v");
+    if (admin) {
+      console.log("b");
+      console.log(admin);
+      return res.json(admin);
+    }
+
+    // 3️⃣ Not found in either collection
+    return res.status(404).json({ message: "No user or admin found with that ID." });
+  } catch (err) {
+    next(err);
+  }
+}; exports.Me = Me;
+
 
 const updateUserInfo = async (req, res, next) => {
   try {
@@ -944,7 +1010,7 @@ const getChatMessages = async (req, res, next) => {
     // --- Notification Logic for Friend Request ---
     // To display a meaningful message, look up the current user's details.
     const currentUser = await _user2.default.findById(currentUserId);
-    const notificationText = `You have a new friend request from ${currentUser ? currentUser.username : 'someone'}`;
+    const notificationText = `You have a new triber request from ${currentUser ? currentUser.username : 'someone'}`;
     await _notificationsjs2.default.updateOne(
       { user: targetUserId },
       { $addToSet: { type: "friendrequest", data: notificationText } },
@@ -954,12 +1020,12 @@ const getChatMessages = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Friend request sent successfully.",
+      message: "Triber request sent successfully.",
       data: targetUser,
     });
   } catch (error) {
-    console.error("Error sending friend request:", error);
-    next(Boom.internal("Error sending friend request."));
+    console.error("Error sending triber request:", error);
+    next(Boom.internal("Error sending triber request."));
   }
 }; exports.sendFriendRequest = sendFriendRequest;
 
@@ -1005,7 +1071,7 @@ const getChatMessages = async (req, res, next) => {
 
     // --- Notification Logic for Friend Request Acceptance ---
     // Notify the requester (sender) that the friend request has been accepted.
-    const notificationText = `Your friend request has been accepted by ${currentUser.username}`;
+    const notificationText = `Your triber request has been accepted by ${currentUser.username}`;
     await _notificationsjs2.default.updateOne(
       { user: requesterId },
       { $addToSet: { type: "acceptrequest", data: notificationText } },
@@ -1015,12 +1081,12 @@ const getChatMessages = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Friend request accepted successfully.",
+      message: "Triber request accepted successfully.",
       data: currentUser,
     });
   } catch (error) {
-    console.error("Error accepting friend request:", error);
-    next(Boom.internal("Error accepting friend request."));
+    console.error("Error accepting triber request:", error);
+    next(Boom.internal("Error accepting triber request."));
   }
 }; exports.acceptFriendRequest = acceptFriendRequest;
 
@@ -1061,12 +1127,12 @@ const getChatMessages = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Friend request rejected successfully.",
+      message: "Triber request rejected successfully.",
       data: currentUser,
     });
   } catch (error) {
-    console.error("Error rejecting friend request:", error);
-    next(Boom.internal("Error rejecting friend request."));
+    console.error("Error rejecting triber request:", error);
+    next(Boom.internal("Error rejecting triber request."));
   }
 }; exports.rejectFriendRequest = rejectFriendRequest;
 
@@ -1148,7 +1214,7 @@ const getChatMessages = async (req, res, next) => {
     const { friendId, currentUserId } = req.body;
     
     if (!friendId || !currentUserId) {
-      return next(Boom.badRequest("Friend ID and current user ID are required."));
+      return next(Boom.badRequest("Triber ID and current user ID are required."));
     }
     
     // Remove friendId from current user's mytribers array.
@@ -1171,7 +1237,7 @@ const getChatMessages = async (req, res, next) => {
     
     res.status(200).json({
       success: true,
-      message: "Friend removed successfully.",
+      message: "Triber removed successfully.",
       data: currentUser,
     });
   } catch (error) {
@@ -1205,7 +1271,7 @@ const getChatMessages = async (req, res, next) => {
     
     res.status(200).json({
       success: true,
-      message: "Sent friend request cancelled successfully.",
+      message: "Sent triber request cancelled successfully.",
       data: sender,
     });
   } catch (error) {
@@ -1239,7 +1305,7 @@ const getChatMessages = async (req, res, next) => {
     
     res.status(200).json({
       success: true,
-      message: "Rejected friend request removed successfully.",
+      message: "Rejected triber request removed successfully.",
       data: currentUser,
     });
   } catch (error) {
@@ -1690,7 +1756,7 @@ const deleteChatForUser = async (req, res, next) => {
   try {
     const userId = req.body.userId || req.payload.user_id;
     const { chatLobbyId } = req.body;
-
+    console.log(req.body);
     if (!chatLobbyId) {
       return res.status(400).json({ error: "chatLobbyId is required" });
     }
@@ -2308,6 +2374,40 @@ const deleteChatForUser = async (req, res, next) => {
     next(Boom.internal("Error fetching friend list."));
   }
 }; exports.getFriendList = getFriendList;
+
+ const getUsersChatInfo = async (req, res, next) => {
+  try {
+    // Accept IDs either as a comma-separated query param or as an array in the JSON body
+    let { userIds } = req.query;
+    if (!userIds && req.body.userIds) {
+      userIds = req.body.userIds;
+    }
+
+    if (!userIds) {
+      return next(Boom.badRequest('Missing userIds parameter'));
+    }
+
+    // Normalize to an array
+    if (typeof userIds === 'string') {
+      userIds = userIds.split(',').map((id) => id.trim());
+    }
+
+    // Query MongoDB for those users and only select the needed fields
+    const users = await _user2.default.find(
+      { _id: { $in: userIds } },
+      'firstName lastName profile_pic'
+    );
+
+    // If you want to preserve input order, you could sort here by
+    // matching the returned docs against the original userIds array.
+
+    res.status(200).json({ success: true, users });
+  } catch (error) {
+    console.error('Error fetching users info:', error);
+    next(Boom.internal('Error fetching users info.'));
+  }
+}; exports.getUsersChatInfo = getUsersChatInfo;
+
  // Adjust the import path as needed
 
  const getChatLobby = async (req, res, next) => {
@@ -2544,7 +2644,7 @@ exports. default = {
 	RefreshToken,
 	Logout,
 	updateAddress,
-	Me,
+	Me: exports.Me,
   updateUserInfo,
   GetTotalNumberOfRegistrationsByDateRange,
   getAddress,
@@ -2596,4 +2696,6 @@ exports. default = {
   searchUsers: exports.searchUsers,
   searchTribers: exports.searchTribers,
   getChatLobby: exports.getChatLobby,
+  deleteUser,
+  getUsersChatInfo: exports.getUsersChatInfo,
 };

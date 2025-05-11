@@ -10,7 +10,6 @@ if (!fs.existsSync(rootUploadDir)) {
     fs.mkdirSync(rootUploadDir, { recursive: true });
 }
 
-console.log("gi");
 
 // Multer storage configuration
 const storage = multer.diskStorage({

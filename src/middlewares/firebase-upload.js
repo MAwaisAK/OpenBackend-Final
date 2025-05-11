@@ -36,8 +36,6 @@ export const uploadFileToFirebase = (file) => {
     if (!file) {
       return reject(new Error("No file provided"));
     }
-    // Create a unique file name
-    console.log(file);
     const fileName = `${Date.now()}-${file.originalname}`;
     const blob = bucket.file(fileName);
     const blobStream = blob.createWriteStream({

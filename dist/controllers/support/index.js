@@ -150,20 +150,21 @@ const Boom = require("boom");
   }
 }; exports.updateReportStatus = updateReportStatus;
 
+// controllers/support.js
  const getReportsForUser = async (req, res, next) => {
   try {
-    // Assuming authentication middleware sets req.user with the current user's data.
-    const userId = req.user && (req.user._id || req.user.id);
+    const userId = req.params.userId;
     if (!userId) {
-      return next(Boom.unauthorized("User not authenticated."));
+      return next(Boom.unauthorized("User ID is required."));
     }
     const reports = await _support2.default.find({ user: userId });
-    res.json(reports);
+    return res.json({ reports });
   } catch (error) {
     console.error("Error fetching reports for user:", error);
-    next(Boom.internal("Error fetching reports for user."));
+    return next(Boom.internal("Error fetching reports for user."));
   }
 }; exports.getReportsForUser = getReportsForUser;
+
 
  const getStatusForUser = async (req, res, next) => {
   try {

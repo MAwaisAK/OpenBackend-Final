@@ -23,6 +23,11 @@ var _grantAccess = require('../middlewares/grantAccess'); var _grantAccess2 = _i
 
 
 
+
+
+
+
+
 var _tribes = require('../controllers/tribes');
 
 const router = _express2.default.Router();
@@ -64,6 +69,7 @@ router.put(
   "/:mytribeId",
   _jwt.verifyAccessToken,
   _grantAccess2.default.call(void 0, "updateAny", "mytribe"),
+  toolUpload,
   _tribes.updateMytribe
 );
 
@@ -79,12 +85,13 @@ router.delete(
 router.get("/get-admin", _tribes.getAllMytribes);
 router.get("/get-users", _tribes.getUsersMytribes);
 router.get("/get-user-id/:userId", _tribes.getSpecificMytribes);
+router.post("/get-tribes-by-ids", _tribes.getUserTribesByIds);
 // Route to join a tribe.
 router.post("/join-tribe", _jwt.verifyAccessToken, _tribes.joinTribe);
 
 // Route to leave a tribe.
 router.post("/leave-tribe", _jwt.verifyAccessToken, _tribes.leaveTribe);
-
+router.get("/search", _tribes.searchUsersTribes);
 // Route to get members of a specific tribe.
 router.get("/tribe-members/:tribeId", _jwt.verifyAccessToken, _tribes.getTribeMembers);
 
@@ -95,6 +102,10 @@ router.post("/remove-member", _jwt.verifyAccessToken, _tribes.removeMemberFromTr
 router.get("/user", _jwt.verifyAccessToken, _tribes.getTribes);
 router.get("/:mytribeId", _tribes.getMytribeById);
 router.get("/user-data", _jwt.verifyAccessToken, _tribes.getUserDetails);
+
+router.post("/:tribeId/admins",   _tribes.addAdminToTribe);
+router.delete("/:tribeId/admins/:userId", _tribes.removeAdminFromTribe);
+router.get("/:tribeId/tribers",    _tribes.getTribeMembersSearch);
 
 
 router.put(

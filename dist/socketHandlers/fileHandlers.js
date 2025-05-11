@@ -109,6 +109,7 @@ exports.upload = upload;
           sentAt: new Date()         // Use 'sentAt' to match your model
         });
         await msgDoc.save();
+        
 
         // Prepare payload for broadcast including both flags
         const payload = {
@@ -157,6 +158,7 @@ exports.upload = upload;
           chatLobbyId: user.room,    // Chat lobby id
           sender: senderId,          // Sender's ObjectId
           message: "",               // No text message in this case
+          senderUsername: user.name,
           fileUrl: fileData.fileUrl, // Firebase file URL
           isImage: isImage,          // Set based on mimetype (or URL extension)
           isVideo: isVideo,          // Set based on mimetype (or URL extension)
@@ -164,6 +166,7 @@ exports.upload = upload;
           sentAt: new Date()         // Use 'sentAt' to match your model
         });
         await msgDoc.save();
+        
 
         // Prepare payload for broadcast including both flags
         const payload = {
@@ -173,7 +176,7 @@ exports.upload = upload;
           isImage: isImage,
           isVideo: isVideo
         };
-        io.to(user.room).emit('newTribeMessage', payload);
+        io.to(user.room).emit('tribeNewFileMessage', payload);
         if (callback) callback();
       } catch (err) {
         console.error("Error saving file message to DB:", err);

@@ -53,14 +53,12 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
 // Helper: Delete file from Firebase using its public URL.
 export const deleteFromFirebase = async (photoUrl) => {
   try {
-    console.log(`Deleting file: ${photoUrl}`);
     const decodedUrl = decodeURIComponent(photoUrl);
     const pathStartIndex = decodedUrl.indexOf("/o/") + 3;
     const pathEndIndex = decodedUrl.indexOf("?alt=media");
     const filePath = decodedUrl.slice(pathStartIndex, pathEndIndex);
     const file = bucket.file(filePath);
     await file.delete();
-    console.log(`Successfully deleted ${filePath} from Firebase Storage.`);
   } catch (error) {
     console.error("Error deleting file from Firebase Storage:", error);
   }
@@ -234,15 +232,12 @@ export const deleteMytribe = async (req, res, next) => {
       { joined_tribes: mytribeId },
       { $pull: { joined_tribes: mytribeId } }
     );
-    console.log(`Removed mytribe ${mytribeId} from all users' joined_tribes.`);
 
     // Delete all messages related to this tribe (assuming Message model has a "chatLobbyId" field)
     await Message.deleteMany({ chatLobbyId: mytribeId });
-    console.log(`Deleted all messages related to tribe ${mytribeId}.`);
 
     // Delete the chat lobby related to this tribe (assuming ChatLobby model has _id = tribeId)
     await ChatLobby.findByIdAndDelete(mytribeId);
-    console.log(`Deleted chat lobby for tribe ${mytribeId}.`);
 
     res.json({ message: "Mytribe and related data deleted successfully." });
   } catch (error) {
@@ -381,7 +376,6 @@ export const getUserTribesByIds = async (req, res, next) => {
       thumbnail: tribe.thumbnail,
       tribeCategory:tribe.tribeCategory,
     }));
-    console.log(tribesWithDetails);
 
     res.json(tribesWithDetails);
   } catch (error) {
@@ -540,8 +534,6 @@ export const getTribes = async (req, res, next) => {
 export const joinTribe = async (req, res, next) => {
   try {
     const { userId, tribeId } = req.body;
-    console.log("UserID:", userId);
-    console.log("TribeID:", tribeId);
 
     if (!userId) {
       return next(Boom.unauthorized("User must be logged in."));
@@ -725,7 +717,6 @@ export const getTribeForUser = async (req, res, next) => {
 export const getTribeById = async (req, res, next) => {
   try {
     const { tribeId } = req.params;
-    console.log("Hi");
     const tribe = await Mytribe.findById(tribeId)
       .select('title members admins shortDescription longDescription ratings blockedUsers messageSettings thumbnail banner tribeCategory')
       .populate("members", "username firstName lastName profile_pic")
@@ -872,8 +863,7 @@ export const createOrGetTribeChatLobby = async (req, res, next) => {
     // Fetch tribe data: title, thumbnail, messageSettings, and members (raw IDs)
     const tribe = await Mytribe.findById(tribeId)
       .select("title thumbnail messageSettings members admins blockedUsers")
-      .populate("members", "username"); // Populate members from User model with username
-    console.log(tribe);
+      .populate("members", "username");
     if (!tribe) {
       return res.status(404).json({ message: "Tribe not found." });
     }
@@ -906,29 +896,42 @@ export const createOrGetTribeChatLobby = async (req, res, next) => {
 /**
  * Get all messages for a tribe chat lobby with sender details.
  */
+// controllers/tribe.js (or wherever your handler lives)
 export const getTribeChatMessages = async (req, res, next) => {
   try {
     const { chatLobbyId } = req.params;
-    const userId = req.query.userId || req.payload?.user_id;
+    const userId     = req.query.userId || req.payload?.user_id;
+    const page       = parseInt(req.query.page, 10) || 0;
+    const PAGE_SIZE  = 20;
 
     if (!chatLobbyId) {
       return res.status(400).json({ message: "Chat Lobby ID is required." });
     }
 
-    const messages = await TribeMessage.find({
-      chatLobbyId,
-      deletedFor: { $ne: userId },
-    }).populate("sender", "username profile_pic _id");
+    // fetch newest first
+    const docs = await TribeMessage
+      .find({ chatLobbyId, deletedFor: { $ne: userId } })
+      .sort({ sentAt: -1 })
+      .skip(page * PAGE_SIZE)
+      .limit(PAGE_SIZE + 1)          // ← grab one extra to test "more"
+      .populate("sender", "username profile_pic _id")
+      .lean();
 
-    if (!messages || messages.length === 0) {
-      return res.status(404).json({ message: "No messages found for this tribe." });
-    }
+    // if there are more than PAGE_SIZE, we know there's another page
+    const hasMore = docs.length > PAGE_SIZE;
+    const slice   = docs.slice(0, PAGE_SIZE).reverse();  
+    // reverse so client gets oldest→newest
 
-    res.json(messages);
-  } catch (error) {
-    next(error);
+    return res.json({
+      messages: slice,
+      hasMore
+    });
+  } catch (err) {
+    next(err);
   }
 };
+
+
 
 
 export const searchUsersTribes = async (req, res, next) => {

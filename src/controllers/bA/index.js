@@ -71,8 +71,7 @@ function sanitizeContent(raw) {
 
 // — helper to write PDF or DOCX into public/downloads/{userId} —
 async function handleDocumentGeneration({ content, format, userId }) {
-  content = sanitizeContent(content); // 🔄 clean content here
-  console.log(content, format, userId );
+  content = sanitizeContent(content);
 
   const downloadsDir = path.join(process.cwd(), "public", "downloads", userId);
   await fs.promises.mkdir(downloadsDir, { recursive: true });
@@ -142,7 +141,6 @@ export async function handleUserInput(userId, userInput) {
   );
   if (fnCallMatch) {
     const args = JSON.parse(fnCallMatch[1]);
-    console.log("🛠️ User requested generate_document directly:", args);
 
     const downloadUrl = await handleDocumentGeneration(args);
     memoryMsgs.push({
@@ -158,11 +156,9 @@ export async function handleUserInput(userId, userInput) {
   const responseMessage = await chatModel.invoke(chatMessages);
   let finalReply = responseMessage.text;
   const fnCall = responseMessage.additional_kwargs?.function_call;
-  console.log("GPT function call:", fnCall);
 
   if (fnCall && fnCall.name === generateDocumentFunction.name) {
     const args = JSON.parse(fnCall.arguments || "{}");
-    console.log("🛠️ GPT is invoking generate_document:", args);
 
     const downloadUrl = await handleDocumentGeneration(args);
     memoryMsgs.push({

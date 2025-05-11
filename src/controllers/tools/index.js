@@ -49,7 +49,6 @@ const handleFirebaseUpload = async (file, folder, nameFormat) => {
 
 export const deleteFromFirebase = async (photoUrl) => {
   try {
-    console.log(`File Path : ${photoUrl}`);
     const decodedUrl = decodeURIComponent(photoUrl);
     const pathStartIndex = decodedUrl.indexOf("/o/") + 3;
     const pathEndIndex = decodedUrl.indexOf("?alt=media");
@@ -66,7 +65,6 @@ export const deleteFromFirebase = async (photoUrl) => {
 
     const file = bucket.file(filePath);
     await file.delete();
-    console.log(`Successfully deleted ${filePath} from Firebase Storage.`);
   } catch (error) {
     console.error("Error deleting file from Firebase Storage:", error);
   }
@@ -134,7 +132,6 @@ export const createTool = async (req, res, next) => {
       }));
 
       await Notification.bulkWrite(bulkOperations);
-      console.log("Sent tool creation notification to all users.");
     } else {
       console.warn("No users found to send tool creation notification.");
     }
